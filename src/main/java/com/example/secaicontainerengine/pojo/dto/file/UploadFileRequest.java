@@ -1,6 +1,7 @@
 package com.example.secaicontainerengine.pojo.dto.file;
 
 
+import com.example.secaicontainerengine.pojo.dto.model.BusinessConfig;
 import com.example.secaicontainerengine.pojo.dto.model.ModelConfig;
 import com.example.secaicontainerengine.pojo.dto.model.ResourceConfig;
 import lombok.Data;
@@ -17,6 +18,8 @@ public class UploadFileRequest implements Serializable {
     private ModelConfig modelConfig;
 
     private ResourceConfig resourceConfig;
+
+    private BusinessConfig businessConfig;
 
     private static final long serialVersionUID = 1L;
 }

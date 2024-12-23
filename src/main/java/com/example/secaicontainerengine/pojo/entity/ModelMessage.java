@@ -32,6 +32,9 @@ public class ModelMessage implements Serializable {
     // 模型需要的资源信息（json 对象）
     private String resourceConfig;
 
+    // 模型业务信息（json 对象），比如后门攻击，对抗攻击
+    private String businessConfig;
+
     // 超参数地址
     private String parameterAddress;
 

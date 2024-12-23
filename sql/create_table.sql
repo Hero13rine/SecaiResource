@@ -63,6 +63,7 @@ create table if not exists model_message
     `parameterAddress`   VARCHAR(512) NULL COMMENT '模型超参数地址',
     `modelConfig`        TEXT         NULL COMMENT '模型信息(json数组)',
     `resourceConfig`     TEXT         NULL COMMENT '资源信息(json数组)',
+    `businessConfig`     TEXT         NULL COMMENT '业务信息(json数组)',
     `allDataAddress`     VARCHAR(512) NULL COMMENT '模型所有数据的文件夹地址',
     `status`             INT      DEFAULT 0 COMMENT '模型状态 0-待评测(未上传) 1-待评测(已上传) 2-评测中 3-成功 4-失败',
     `createTime`         DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
