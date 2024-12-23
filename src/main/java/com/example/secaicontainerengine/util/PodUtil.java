@@ -3,10 +3,15 @@ package com.example.secaicontainerengine.util;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientBuilder;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.io.File;
+
+@Slf4j
 @Component
 public class PodUtil {
 
@@ -30,6 +35,35 @@ public class PodUtil {
         return false;
     }
 
-
-
+    /**
+     * 将指定地址的文件上传到指定的 Pod 中
+     *
+     * @param client      KubernetesClient 实例
+     * @param namespace   Pod 所在的命名空间
+     * @param podName     Pod 的名称
+     * @param filePath    本地文件路径
+     * @param targetPath  Pod 内目标文件路径
+     * @return 是否上传成功
+     */
+    public static boolean uploadFileToPod(KubernetesClient client, String namespace, String podName, String filePath, String targetPath) {
+        File fileToUpload = new File(filePath); // 要上传的文件
+        try {
+            // 检查文件是否存在
+            if (!fileToUpload.exists() || !fileToUpload.isFile()) {
+                log.error("文件不存在或不是文件: {}", filePath);
+                throw new IllegalArgumentException("文件路径无效: " + filePath);
+            }
+            // 上传文件到 Pod
+            client.pods()
+                .inNamespace(namespace)    // 指定命名空间
+                .withName(podName)         // 指定 Pod 名称
+                .file(targetPath)          // Pod 内的目标路径 /home/..
+                .upload(fileToUpload.toPath()); // 上传文件
+            log.info("文件上传成功: {} -> {} (Pod: {}, Namespace: {})", filePath, targetPath, podName, namespace);
+            return true;
+        } catch (Exception e) {
+            log.error("文件上传失败: {} -> {} (Pod: {}, Namespace: {})", filePath, targetPath, podName, namespace, e);
+            return false;
+        }
+    }
 }
