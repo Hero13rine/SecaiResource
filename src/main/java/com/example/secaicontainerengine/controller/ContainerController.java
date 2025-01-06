@@ -2,8 +2,10 @@ package com.example.secaicontainerengine.controller;
 
 
 import com.example.secaicontainerengine.pojo.dto.RequestDTO;
+import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.example.secaicontainerengine.service.container.ContainerService;
 import com.example.secaicontainerengine.service.image.ImageService;
+import com.example.secaicontainerengine.service.modelmessage.ModelMessageService;
 import com.example.secaicontainerengine.util.RequestDTOUtil;
 import freemarker.template.TemplateException;
 
@@ -24,6 +26,8 @@ public class ContainerController {
     private ContainerService containerService;
     @Autowired
     private ImageService imageService;
+    @Autowired
+    private ModelMessageService modelMessageService;
 
     @PostMapping("/start")
     public String start(@RequestBody RequestDTO requestDTO) throws TemplateException, IOException {
@@ -37,6 +41,7 @@ public class ContainerController {
         Map resourceLimit = RequestDTOUtil.getResourceLimit(requestDTO);
         //获取每个镜像的拉取地址
         Map<String, String> imageUrl = imageService.getUrlByName(imagesName);
+
         log.info("userId = {}", userId);
         log.info("imageUrl = {}", imageUrl);
         log.info("imageParam = {}", imageParam);
@@ -47,10 +52,24 @@ public class ContainerController {
         return "请求成功";
     }
 
+    @GetMapping("/test1")
+    public String start(String userId) throws TemplateException, IOException {
+        ModelMessage modelMessage = modelMessageService.getById(userId);
+
+
+
+        return "请求成功";
+    }
+
     @DeleteMapping("/delete/{userId}")
     public void delete(@PathVariable String userId) {
         log.info("开始回收用户{}的容器：", userId);
         containerService.deleteAll(userId);
+    }
+
+    @GetMapping("/monitor/{podName}")
+    public String monitor(@PathVariable String podName) {
+        return containerService.getStatus(podName);
     }
 
 }

@@ -1,5 +1,6 @@
 package com.example.secaicontainerengine.pojo.entity;
 
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -23,11 +24,29 @@ public class Container implements Serializable {
 
     private String containerName;
 
+    private String containerId;
+
+    private String nameSpace;
+
+    private String status;
+
+    private Integer restarts;
+
+    private String AGE;
+
+    private String nodeName;
+
     private Integer imageId;
 
     private Integer userId;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime updateTime;
+
+    @TableLogic
+    private int isDelete;
 
 }

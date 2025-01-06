@@ -6,6 +6,6 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface ImageMapper {
 
-    @Select("select url from image where image_name = #{name}")
+    @Select("select url from image where imageName = #{name}")
     String getUrlByName(String name);
 }

@@ -21,7 +21,7 @@ public class PodUtil {
     @Autowired
     private KubernetesClient K8sClient;
 
-    //判断pod是否已经存在yujiqun
+    //判断pod是否已经存在于集群
     public boolean isExistCluster(String podName) {
         if(podName == null) {
             return false;

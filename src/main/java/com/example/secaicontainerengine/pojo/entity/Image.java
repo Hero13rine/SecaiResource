@@ -1,6 +1,9 @@
 package com.example.secaicontainerengine.pojo.entity;
 
 
+import com.baomidou.mybatisplus.annotation.TableLogic;
+import com.fasterxml.jackson.annotation.JsonFormat;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,7 +27,14 @@ public class Image implements Serializable {
 
     private String url;
 
-    private String creationTime;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private String createTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private String updateTime;
 
     private Long size;
+
+    @TableLogic
+    private Integer isDelete;
 }
