@@ -43,9 +43,10 @@ public class ContainerController {
         Map<String, String> imageUrl = imageService.getUrlByName(imagesName);
 
         log.info("userId = {}", userId);
-        log.info("imageUrl = {}", imageUrl);
+        log.info("imagesName = {}", imagesName);
         log.info("imageParam = {}", imageParam);
         log.info("resourceLimit = {}", resourceLimit);
+        log.info("imageUrl = {}", imageUrl);
 
         List streams = containerService.init(userId, imageUrl, imageParam);
         containerService.start(userId, streams);
@@ -55,7 +56,6 @@ public class ContainerController {
     @GetMapping("/test1")
     public String start(String userId) throws TemplateException, IOException {
         ModelMessage modelMessage = modelMessageService.getById(userId);
-
 
 
         return "请求成功";

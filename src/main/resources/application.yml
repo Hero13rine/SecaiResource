@@ -1,8 +1,8 @@
 spring:
   servlet:
     multipart:
-      max-file-size: 2GB  # 单个文件最大大小
-      max-request-size: 3GB  # 整个请求的最大大小
+      max-file-size: 20GB  # 单个文件最大大小
+      max-request-size: 30GB  # 整个请求的最大大小
   application:
     name: secAI-container-engine
   datasource:
@@ -42,3 +42,13 @@ mybatis-plus:
 k8s:
   config: k8s/config
   yaml: template/Pod.yml
+
+sftp:
+  host: 10.195.76.134
+  port: 22
+  username: nfs
+  password: 123456
+  flag: data.done #创建一个该名字的空文件，代表数据上传nfs服务器完毕
+
+nfs:
+  path: /k8s

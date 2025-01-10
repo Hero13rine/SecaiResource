@@ -1,9 +1,20 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: ${pod_name}
+  name: nginx-pod
 spec:
   restartPolicy: Never
   containers:
-    - name: ${container_name}
-      image: ${image}
+    - name: nginx
+      image: nginx:latest
+      ports:
+        - containerPort: 80
+      volumeMounts:
+        - name: nfs-volume
+          mountPath: /usr/share/nginx/html
+  volumes:
+    - name: nfs-volume
+      nfs:
+        server: 10.195.76.134
+        path: /k8s/1242343443
+        readOnly: false
