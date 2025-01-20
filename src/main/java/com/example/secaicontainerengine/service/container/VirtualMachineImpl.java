@@ -3,6 +3,7 @@ package com.example.secaicontainerengine.service.container;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.secaicontainerengine.mapper.ContainerMapper;
 import com.example.secaicontainerengine.pojo.entity.Container;
+import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import freemarker.template.TemplateException;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +19,12 @@ public class VirtualMachineImpl implements ContainerService {
     public List<ByteArrayInputStream> init(String userId, Map<String, String> imageUrl, Map<String, Map> imageParam) throws IOException, TemplateException {
         return List.of();
     }
+
+    @Override
+    public List<ByteArrayInputStream> initNew(ModelMessage modelMessage, List<String> podYamlFile, String modelName) throws IOException, TemplateException {
+        return List.of();
+    }
+
 
     @Override
     public void start(String userId, List<ByteArrayInputStream> streams) throws IOException {

@@ -1,6 +1,9 @@
 package com.example.secaicontainerengine.service.container;
 
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.example.secaicontainerengine.mapper.ContainerMapper;
 import com.example.secaicontainerengine.pojo.entity.Container;
+import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.example.secaicontainerengine.util.PodUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import freemarker.template.TemplateException;
@@ -26,7 +29,7 @@ import static com.example.secaicontainerengine.util.YamlUtil.renderTemplate;
 
 @Service(value = "k8sContainerImpl")
 @Slf4j
-public class K8sImpl implements ContainerService {
+public class K8sImpl implements ContainerService{
 
     @Autowired
     private KubernetesClient K8sClient;
@@ -45,6 +48,18 @@ public class K8sImpl implements ContainerService {
 
     @Value("${k8s.yaml}")
     private String k8sYaml;
+
+    @Value("${k8s.adversarial-yaml}")
+    private String k8sAdversarialYaml;
+
+    @Value("${nfs.origin-data}")
+    private String originData;
+
+    @Value("${nfs.rootPath}")
+    private String rootPath;
+
+    @Value("${sftp.host}")
+    private String nfsIp;
 
     //初始化接口
     public List<ByteArrayInputStream> init(String userId, Map<String, String> imageUrl, Map<String, Map> imageParam) throws IOException, TemplateException {
@@ -68,6 +83,47 @@ public class K8sImpl implements ContainerService {
             String yamlContent = renderTemplate(k8sYaml, values);
             ByteArrayInputStream ymlStream = new ByteArrayInputStream(yamlContent.getBytes());
             streams.add(ymlStream);
+        }
+        return streams;
+    }
+
+    //初始化接口
+    public List<ByteArrayInputStream> initNew(ModelMessage modelMessage, List<String> evaluationTypes, String imageName) throws IOException, TemplateException {
+        List<ByteArrayInputStream> streams = new ArrayList<>();
+        for (String evaluationType : evaluationTypes) {
+            //pod命名方式：url+用户id
+            String podName = modelMessage.getUserId() + "-" + modelMessage.getId() + "-" + evaluationType.toLowerCase();
+            log.info("初始化接口：Pod的名称-" + podName);
+            boolean podExist = redisTemplate.hasKey(modelMessage.getUserId()+":"+podName);
+            //如果已存在，继续创建下一个pod
+            if(podExist) {
+                log.info("初始化接口：该Pod之前已启动-" + podName);
+                return null;
+            }
+            if(imageName == null){
+                imageName = evaluationType;
+
+                // 测试
+                imageName = "nginx:latest";
+            }
+            //准备模板变量
+            Map<String, String> values = new HashMap<>();
+            values.put("podName", podName);
+            values.put("containerName", podName);
+            values.put("imageName", imageName);
+            values.put("originData", originData);
+            values.put("attackData", evaluationType);
+            values.put("nfsIP",nfsIp);
+            values.put("rootPath",rootPath);
+            values.put("userId",String.valueOf(modelMessage.getUserId()));
+            values.put("modelId",String.valueOf(modelMessage.getId()));
+
+            //生成填充好的yml文件字节流
+            String yamlContent = renderTemplate(k8sAdversarialYaml, values);
+            ByteArrayInputStream ymlStream = new ByteArrayInputStream(yamlContent.getBytes());
+            streams.add(ymlStream);
+
+
         }
         return streams;
     }
