@@ -15,6 +15,7 @@ import com.jcraft.jsch.Session;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,18 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelMessageMapper, 
     @Value("${nfs.rootPath}")
     private String nfsPath;
 
+    @Value("${nfs.userData}")
+    private String userData;
+
+    @Value("${nfs.outputData}")
+    private String outputData;
+
+    @Value("${nfs.resultData}")
+    private String resultData;
+
+    @Value("${nfs.evaluationData}")
+    private String evaluationData;
+
 
     public void startEvaluationPod(ModelMessage modelMessage) throws Exception {
         // 根据不同的攻击类型来构造 Pod 的配置信息
@@ -54,9 +67,20 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelMessageMapper, 
         Session session = sftpConnect.getSession();
         sftpChannel.connect();
         for (String podYamlFile : podYamlFiles) {
-            String remoteDir = nfsPath + File.separator + "model_data" + File.separator + modelMessage.getUserId()
-                    + File.separator + modelMessage.getId() + File.separator + podYamlFile;
-            sftpUploader.createRemoteDirectory(sftpChannel, remoteDir);
+            String outputRemoteDir = nfsPath + File.separator + userData
+                    + File.separator + modelMessage.getUserId()
+                    + File.separator + modelMessage.getId()
+                    + File.separator + evaluationData
+                    + File.separator + podYamlFile
+                    + File.separator + outputData;
+            sftpUploader.createRemoteDirectory(sftpChannel, outputRemoteDir);
+            String resultRemoteDir = nfsPath + File.separator + userData
+                    + File.separator + modelMessage.getUserId()
+                    + File.separator + modelMessage.getId()
+                    + File.separator + evaluationData
+                    + File.separator + podYamlFile
+                    + File.separator + resultData;
+            sftpUploader.createRemoteDirectory(sftpChannel, resultRemoteDir);
         }
         sftpChannel.disconnect();
         session.disconnect();

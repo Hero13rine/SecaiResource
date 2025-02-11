@@ -55,6 +55,9 @@ public class FileController {
     @Value("${nfs.origin-data}")
     private String originDataPath;
 
+    @Value("${nfs.userData}")
+    private String userData;
+
     @Autowired
     private ExecutorService taskExecutor;
 
@@ -132,7 +135,10 @@ public class FileController {
             try {
                 log.info("开始上传文件到nfs服务器...");
                 // 这里好像有问题，sftp协议好像默认以/为分隔符，如果使用了File.separator在windows系统下则会变成\导致报错
-                String remoteDir  = nfsPath + File.separator + loginUser.getId() + File.separator + modelId + File.separator + fileUploadBizEnum.getValue() + File.separator + originDataPath;
+                String remoteDir = nfsPath + File.separator + userData +
+                        File.separator + loginUser.getId() +
+                        File.separator + modelId +
+                        File.separator + fileUploadBizEnum.getValue();
                 sftpUploader.uploadDirectory(loginUser.getId(), FileConstant.FILE_BASE_PATH + File.separator + fileUploadBizEnum.getValue() + File.separator + loginUser.getId(),
                         remoteDir, modelId);
 
