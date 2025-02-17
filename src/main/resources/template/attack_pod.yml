@@ -7,21 +7,29 @@ spec:
   containers:
     - name: ${containerName}
       image: ${imageName}
+      command: ["/bin/bash", "-c", "bash /app/systemData/script/run.sh"]
       ports:
         - containerPort: 80
       volumeMounts:
-        - name: origin-data
-          mountPath: /home/model_data/${originData}
-        - name: adversarial-data
-          mountPath: /home/model_data/${attackData}
+        - name: model-data
+          mountPath: /app/${userData}/model_data
+        - name: evaluation-data
+          mountPath: /app/${userData}/${evaluationData}/${evaluationType}
+        - name: system-data
+          mountPath: /app/systemData
   volumes:
-    - name: origin-data
+    - name: model-data
       nfs:
         server: ${nfsIP}
-        path: ${rootPath}/${userId}/${modelId}/model_data/${originData}
+        path: ${rootPath}/${userData}/${userId}/${modelId}/model_data
         readOnly: false
-    - name: adversarial-data
+    - name: evaluation-data
       nfs:
         server: ${nfsIP}
-        path: ${rootPath}/${userId}/${modelId}/model_data/${attackData}
+        path: ${rootPath}/${userData}/${userId}/${modelId}/${evaluationData}/${evaluationType}
+        readOnly: false
+    - name: system-data
+      nfs:
+        server: ${nfsIP}
+        path: ${rootPath}/${systemData}
         readOnly: false

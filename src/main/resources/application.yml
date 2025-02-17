@@ -55,6 +55,11 @@ sftp:
 nfs:
   # /home/nfs/k8s/model_data/userId/modelId/originData
   rootPath: /home/nfs/k8s
+  userData: userData
+  evaluationData: evaluationData
+  outputData: output
+  resultData: result
+  systemData: systemData
   origin-data: originData
 
 es:

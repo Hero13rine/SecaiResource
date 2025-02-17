@@ -56,9 +56,6 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     @Value("${k8s.adversarial-yaml}")
     private String k8sAdversarialYaml;
 
-    @Value("${nfs.origin-data}")
-    private String originData;
-
     @Value("${nfs.rootPath}")
     private String rootPath;
 
@@ -68,6 +65,15 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     @Autowired
     private ContainerMapper containerMapper;
 
+
+    @Value("${nfs.userData}")
+    private String userData;
+
+    @Value("${nfs.systemData}")
+    private String systemData;
+
+    @Value("${nfs.evaluationData}")
+    private String evaluationData;
 
     //初始化接口
     public List<ByteArrayInputStream> init(Long userId, Map<String, String> imageUrl, Map<String, Map> imageParam) throws IOException, TemplateException {
@@ -112,15 +118,18 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                 imageName = evaluationType;
 
                 // 测试
-                imageName = "nginx:latest";
+//                imageName = "nginx:latest";
+                imageName = "10.195.9.104:5000/sec_ai_image";
             }
             //准备模板变量
             Map<String, String> values = new HashMap<>();
             values.put("podName", podName);
             values.put("containerName", podName);
             values.put("imageName", imageName);
-            values.put("originData", originData);
-            values.put("attackData", evaluationType);
+            values.put("userData", userData);
+            values.put("evaluationData", evaluationData);
+            values.put("evaluationType", evaluationType);
+            values.put("systemData", systemData);
             values.put("nfsIP",nfsIp);
             values.put("rootPath",rootPath);
             values.put("userId",String.valueOf(modelMessage.getUserId()));

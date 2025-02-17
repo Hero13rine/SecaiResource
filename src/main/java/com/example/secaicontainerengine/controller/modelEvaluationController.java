@@ -38,9 +38,9 @@ public class modelEvaluationController {
     public BaseResponse<?> startModelEvaluation(@RequestBody ModelEvaluationRequest modelEvaluationRequest) {
         Long modelId = modelEvaluationRequest.getModelId();
 
-        // 测试
+//         测试
 
-        modelId = 1880539772613976065L;
+//        modelId = 1889145615706112001L;
 
 
         ModelMessage modelMessage = modelEvaluationService.getById(modelId);

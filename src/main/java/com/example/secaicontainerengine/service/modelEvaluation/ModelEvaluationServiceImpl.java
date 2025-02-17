@@ -5,8 +5,10 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.secaicontainerengine.common.ErrorCode;
 import com.example.secaicontainerengine.config.SftpUploader;
 import com.example.secaicontainerengine.exception.BusinessException;
+import com.example.secaicontainerengine.mapper.ModelEvaluationMapper;
 import com.example.secaicontainerengine.mapper.ModelMessageMapper;
 import com.example.secaicontainerengine.pojo.dto.model.BusinessConfig;
+import com.example.secaicontainerengine.pojo.entity.ModelEvaluation;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.example.secaicontainerengine.pojo.entity.SftpConnect;
 import com.example.secaicontainerengine.service.container.ContainerService;
@@ -21,6 +23,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -53,6 +56,8 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelMessageMapper, 
 
     @Value("${nfs.evaluationData}")
     private String evaluationData;
+    @Autowired
+    private ModelEvaluationMapper modelEvaluationMapper;
 
 
     public void startEvaluationPod(ModelMessage modelMessage) throws Exception {
@@ -84,6 +89,15 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelMessageMapper, 
         }
         sftpChannel.disconnect();
         session.disconnect();
+
+        // 初始化模型评测表
+        ModelEvaluation modelEvaluation = ModelEvaluation.builder()
+                        .modelId(modelMessage.getId()).userId(modelMessage.getUserId())
+                        .adversarialAttackScore(BigDecimal.ZERO).adversarialAttackStatus("评测中")
+                        .backdoorAttackScore(BigDecimal.ZERO).backdoorAttackStatus("评测中").build();
+
+
+        modelEvaluationMapper.insert(modelEvaluation);
 
         // 使用 K8sClient 启动 Pod
         containerService.start(modelMessage.getUserId(), modelMessage.getId(), streams);
