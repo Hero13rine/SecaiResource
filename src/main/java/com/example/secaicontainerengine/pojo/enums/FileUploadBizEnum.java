@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 
 public enum FileUploadBizEnum {
 
-    MODEL_DATA("模型数据", "model_data");
+    MODEL_DATA("模型数据", "modelData");
 
     private final String text;
 

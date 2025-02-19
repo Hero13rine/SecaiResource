@@ -5,16 +5,20 @@ import com.example.secaicontainerengine.exception.BusinessException;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.SftpException;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Vector;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+@Slf4j
 public class FileUtils {
     // 解压文件
     public static String unzipFile(String zipFilePath, String extractDirPath) throws IOException {
@@ -165,6 +169,31 @@ public class FileUtils {
         }
 
         return modelMessage;
+    }
+
+
+
+
+
+    // 将目录的最后一级修改为 modelData
+    public static String renameModelData(String modelSavePath) throws IOException {
+        // 获取解压后的目录的最后一级并修改为 modelData
+        File modelSaveDir = new File(modelSavePath);
+        if (modelSaveDir.exists() && modelSaveDir.isDirectory()) {
+            String parentDir = modelSaveDir.getParent();  // 获取父目录
+            String newDirName = "modelData";  // 新的目录名称
+            File renamedDir = new File(parentDir, newDirName);
+
+            // 重命名目录
+            if (!modelSaveDir.renameTo(renamedDir)) {
+                throw new IOException("无法重命名目录: " + modelSavePath);
+            }
+            modelSavePath = renamedDir.getAbsolutePath();  // 更新为重命名后的路径
+            log.info("解压后的目录已重命名为: " + modelSavePath);
+            return modelSavePath;
+        } else {
+            throw new IOException("指定的解压目录无效: " + modelSavePath);
+        }
     }
 }
 

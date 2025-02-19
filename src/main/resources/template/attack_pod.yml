@@ -12,7 +12,7 @@ spec:
         - containerPort: 80
       volumeMounts:
         - name: model-data
-          mountPath: /app/${userData}/model_data
+          mountPath: /app/${userData}/modelData
         - name: evaluation-data
           mountPath: /app/${userData}/${evaluationData}/${evaluationType}
         - name: system-data
@@ -21,7 +21,7 @@ spec:
     - name: model-data
       nfs:
         server: ${nfsIP}
-        path: ${rootPath}/${userData}/${userId}/${modelId}/model_data
+        path: ${rootPath}/${userData}/${userId}/${modelId}/modelData
         readOnly: false
     - name: evaluation-data
       nfs:
