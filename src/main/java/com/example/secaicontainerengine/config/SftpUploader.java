@@ -9,8 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.io.File;
-import java.io.FileWriter;
+import java.io.*;
 import java.util.Vector;
 
 import static com.example.secaicontainerengine.util.FileUtils.processFilesInRemoteDirectory;
@@ -185,5 +184,38 @@ public class SftpUploader {
             }
         }
 
+    }
+
+    public void shRemoteScript(Session sshSession, String scriptPath) throws JSchException, IOException {
+        // 执行脚本
+        System.out.println("镜像脚本开始执行！！！");
+        // 执行脚本
+        ChannelExec channelExec = (ChannelExec) sshSession.openChannel("exec");
+        String command = "echo '" + password + "' | sudo -S chmod +x " + scriptPath + " && echo '" + password + "' | sudo -S " + scriptPath;
+        channelExec.setCommand(command);
+
+        // 设置标准错误输出流
+        InputStream errorStream = channelExec.getErrStream();
+        BufferedReader errorReader = new BufferedReader(new InputStreamReader(errorStream));
+
+        channelExec.connect();
+
+        // 读取标准输出流
+        InputStream inputStream = channelExec.getInputStream();
+        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+
+        String line;
+        while ((line = reader.readLine()) != null) {
+            System.out.println("stdout: " + line);  // 打印脚本执行输出
+        }
+
+        // 读取错误输出流
+        while ((line = errorReader.readLine()) != null) {
+            System.out.println("stderr: " + line);  // 打印错误输出
+        }
+
+        // 等待命令执行完成
+        channelExec.disconnect();
+        System.out.println("镜像脚本执行完成！！！");
     }
 }

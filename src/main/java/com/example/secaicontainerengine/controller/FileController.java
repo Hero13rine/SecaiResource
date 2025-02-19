@@ -2,19 +2,17 @@ package com.example.secaicontainerengine.controller;
 
 
 import cn.hutool.core.io.FileUtil;
-import cn.hutool.json.JSONUtil;
 import com.example.secaicontainerengine.common.ErrorCode;
 import com.example.secaicontainerengine.config.SftpUploader;
 import com.example.secaicontainerengine.constant.FileConstant;
 import com.example.secaicontainerengine.exception.BusinessException;
 import com.example.secaicontainerengine.pojo.dto.file.UploadFileRequest;
-import com.example.secaicontainerengine.pojo.dto.model.ModelConfig;
-import com.example.secaicontainerengine.pojo.dto.model.ResourceConfig;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.example.secaicontainerengine.pojo.entity.User;
 import com.example.secaicontainerengine.pojo.enums.FileUploadBizEnum;
 import com.example.secaicontainerengine.service.User.UserService;
 import com.example.secaicontainerengine.service.modelEvaluation.ModelEvaluationService;
+import com.example.secaicontainerengine.util.FileUtils;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,8 +24,13 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 import static com.example.secaicontainerengine.util.FileUtils.processFilesInDirectory;
 import static com.example.secaicontainerengine.util.FileUtils.unzipFile;
@@ -109,7 +112,7 @@ public class FileController {
 
 
         // 使用线程处理文件保存和解压操作
-        taskExecutor.submit(() -> {
+        Future<?> firstTaskFuture = taskExecutor.submit(() -> {
             try {
                 // 保存文件到本地
                 multipartFile.transferTo(file);
@@ -118,6 +121,26 @@ public class FileController {
                 // 解压文件
                 String modelSavePath = unzipFile(localFilepath, parentDirectory.getAbsolutePath());
                 log.info("文件已解压到: " + modelSavePath);
+
+                // 获取解压后的目录的最后一级并修改为 modelData
+                modelSavePath = FileUtils.renameModelData(modelSavePath);
+
+                // 复制 Dockerfile 到解压后的目录
+                Path dockerSourcePath = Paths.get(System.getProperty("user.dir"), "src", "main", "resources", "Docker", "Dockerfile");
+
+                Path dockerDestinationPath = Paths.get(modelSavePath, "Dockerfile");
+
+                try {
+                    Files.copy(dockerSourcePath, dockerDestinationPath);
+                    log.info("Dockerfile 已复制到: " + dockerDestinationPath);
+                } catch (IOException e) {
+                    log.error("Dockerfile 复制失败", e);
+                    throw new BusinessException(ErrorCode.SYSTEM_ERROR, "复制 Dockerfile 失败");
+                }
+
+                // 将镜像相关脚本文件生成到压缩后的目录
+                Path shDestinationPath = Paths.get(modelSavePath, "imageOpe.sh");
+                FileUtils.generateImageSh(modelMessage, shDestinationPath);
 
                 // 模型保存路径（此处可执行进一步操作）
                 processFilesInDirectory(modelMessage, modelSavePath);
@@ -133,12 +156,13 @@ public class FileController {
         //把解压后的目录上传到nfs服务器
         taskExecutor.submit(() -> {
             try {
+                // 等待第一个任务完成
+                firstTaskFuture.get();  // 阻塞，直到第一个任务完成
                 log.info("开始上传文件到nfs服务器...");
                 // 这里好像有问题，sftp协议好像默认以/为分隔符，如果使用了File.separator在windows系统下则会变成\导致报错
                 String remoteDir = nfsPath + File.separator + userData +
                         File.separator + loginUser.getId() +
-                        File.separator + modelId +
-                        File.separator + fileUploadBizEnum.getValue();
+                        File.separator + modelId;
                 sftpUploader.uploadDirectory(loginUser.getId(), FileConstant.FILE_BASE_PATH + File.separator + fileUploadBizEnum.getValue() + File.separator + loginUser.getId(),
                         remoteDir, modelId);
 

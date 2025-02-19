@@ -119,7 +119,9 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
 
                 // 测试
 //                imageName = "nginx:latest";
-                imageName = "10.195.9.104:5000/sec_ai_image";
+//                imageName = "10.195.9.104:5000/sec_ai_image";
+                imageName = "10.195.9.104:5000/" + modelMessage.getId();
+
             }
             //准备模板变量
             Map<String, String> values = new HashMap<>();

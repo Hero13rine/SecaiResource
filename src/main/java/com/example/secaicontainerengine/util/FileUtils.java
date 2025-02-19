@@ -173,7 +173,21 @@ public class FileUtils {
 
 
 
+    public static void generateImageSh(ModelMessage modelMessage, Path shDestinationPath){
 
+        Long userId = modelMessage.getUserId();
+        Long modelId = modelMessage.getId();
+        String buildAndPushScript = "#!/bin/bash\n" +
+                "cd /home/nfs/userData/" + userId + "/" + modelId + "/modelData\n" +
+                "sudo docker build -t " + modelId + ":latest .\n" +
+                "sudo docker tag " + modelId + ":latest 10.195.9.104:5000/" + modelId + "\n" +
+                "sudo docker push 10.195.9.104:5000/" + modelId + "\n";
+        try {
+            Files.write(shDestinationPath, buildAndPushScript.getBytes());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     // 将目录的最后一级修改为 modelData
     public static String renameModelData(String modelSavePath) throws IOException {
