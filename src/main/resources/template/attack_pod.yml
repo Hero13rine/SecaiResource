@@ -17,6 +17,11 @@ spec:
           mountPath: /app/${userData}/${evaluationData}/${evaluationType}
         - name: system-data
           mountPath: /app/systemData
+      env:
+        - name: containerName
+          value: ${containerName}
+        - name: namespace
+          value: default
   volumes:
     - name: model-data
       nfs:

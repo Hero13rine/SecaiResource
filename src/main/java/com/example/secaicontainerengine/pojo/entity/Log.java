@@ -2,8 +2,8 @@ package com.example.secaicontainerengine.pojo.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.annotation.IdType;
-import java.time.LocalDateTime;
 import com.baomidou.mybatisplus.annotation.TableId;
+import java.time.LocalDateTime;
 import java.io.Serializable;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -17,7 +17,7 @@ import lombok.experimental.Accessors;
  * </p>
  *
  * @author CFZ
- * @since 2025-02-11
+ * @since 2025-02-19
  */
 @Data
 @EqualsAndHashCode(callSuper = false)
@@ -27,23 +27,18 @@ public class Log implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
-    private LocalDateTime logTime;
-
-    private String podName;
+    @TableId(value = "id", type = IdType.AUTO)
+    private Long id;
 
     private String containerName;
 
     private String namespace;
 
-    private Integer userId;
-
     private String messageKey;
 
     private String messageValue;
 
-    @TableId(value = "id", type = IdType.AUTO)
-    private Long id;
-
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime logTime;
 
 }
