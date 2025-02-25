@@ -24,19 +24,18 @@ create table if not exists user
 -- 容器表
 create table if not exists container
 (
-    id             bigint auto_increment comment 'id' primary key,
+    id            bigint auto_increment comment 'id' primary key,
+    imageId       bigint                             not null comment '关联的镜像ID',
+    modelId       bigint                             not null comment '当前容器所属的模型id',
     containerName varchar(256)                       not null comment '容器名称',
-    containerId   varchar(512)                       not null comment '容器ID',
     nameSpace     varchar(256)                       null comment '容器命名空间',
-    status         varchar(50)                        null comment '容器状态',
-    restarts       int                                null comment '容器重启次数',
-    AGE            varchar(50)                        null comment '容器存活时间',
+    status        varchar(50)                        null comment '容器状态',
+    restarts      int                                null comment '容器重启次数',
+    AGE           varchar(50)                        null comment '容器存活时间',
     nodeName      varchar(256)                       null comment '所在节点名称',
-    imageId       int                                not null comment '关联的镜像ID',
-    userId        int                                not null comment '当前容器所属用户ID',
-    createTime     datetime default CURRENT_TIMESTAMP not null comment '创建时间',
-    updateTime     datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
-    isDelete       tinyint  default 0                 not null comment '是否删除'
+    createTime    datetime default CURRENT_TIMESTAMP null comment '创建时间',
+    updateTime    datetime default CURRENT_TIMESTAMP null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete      tinyint  default 0                 not null comment '是否删除'
 ) comment '容器' collate = utf8mb4_unicode_ci;
 
 -- 镜像表
@@ -85,3 +84,40 @@ create table if not exists model_evaluation
    `updateTime`         DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
    `isDeleted`          TINYINT  DEFAULT 0 COMMENT '逻辑删除标志（0: 正常, 1: 已删除）'
 ) comment '评测信息表' collate = utf8mb4_unicode_ci;
+
+-- 日志表
+create table if not exists log
+(
+    id            bigint auto_increment primary key,
+    containerName varchar(30)                        null comment '容器名称',
+    namespace     varchar(30)                        null comment '容器命名空间',
+    messageKey    varchar(30)                        null comment '消息key',
+    messageValue  varchar(100)                       null comment '消息value',
+    logTime       datetime default CURRENT_TIMESTAMP null comment '日志的生成时间'
+) comment '日志表';
+
+-- 模型评测成功触发器
+create definer = root@localhost trigger container_exec_success
+    after update
+    on model_evaluation
+    for each row
+BEGIN
+    IF NEW.backdoorAttackStatus = '已完成' AND NEW.adversarialAttackStatus = '已完成' THEN
+        UPDATE model_message
+        SET status = '3'
+        WHERE id = NEW.modelId;
+    END IF;
+END;
+
+-- 模型评测失败触发器
+create definer = root@localhost trigger container_exec_failure
+    after update
+    on container
+    for each row
+BEGIN
+    IF NEW.status = 'Failed' THEN
+        UPDATE model_message
+        SET status = '4'
+        WHERE id = NEW.modelId;
+    END IF;
+END;

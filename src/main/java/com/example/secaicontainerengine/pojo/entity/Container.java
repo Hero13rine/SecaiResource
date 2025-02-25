@@ -38,8 +38,6 @@ public class Container implements Serializable {
 
     private Long imageId;
 
-    private Long userId;
-
     private Long modelId;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

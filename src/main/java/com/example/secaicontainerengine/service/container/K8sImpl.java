@@ -180,7 +180,6 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                                 Instant.now()).getSeconds()))
                         .nodeName(pod.getStatus().getNominatedNodeName())
                         .imageId(0L)
-                        .userId(userId)
                         .modelId(modelId)
                         .updateTime(LocalDateTime.now())
                         .build();
@@ -188,13 +187,13 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                 switch (action) {
                     case ADDED:
                     case MODIFIED: {
-                        //把创建好的Pod实例保存在redis中
                         if(phase.equals("Running")) {
                             log.info("启动接口：已启动的Pod名称-" + containerName);
                             String containerKey = userId + ":" +containerName;
-                            //保存容器实例到redis中
+                            //1.保存容器实例到redis中
                             redisTemplate.opsForValue().set(containerKey, container);
-                            //保存容器实例到mysql中
+                            log.info("启动接口：容器实例已记录到Redis中-" + containerName);
+                            //2.保存容器实例到mysql中
                             Container existContainer = containerMapper.selectOne(new LambdaQueryWrapper<Container>()
                                     .eq(Container::getContainerName, containerName));
                             if(existContainer != null) {
@@ -205,11 +204,18 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                                 //如果当前容器实例不存在，则插入一条新的容器实例
                                 containerMapper.insert(container);
                             }
-                            log.info("启动接口：容器实例已记录到Redis中-" + containerName);
                         } else if (phase.equals("Succeeded") || phase.equals("Failed")) {
                             deleteSingle(userId, containerName);
-                            containerMapper.update(container, new LambdaQueryWrapper<Container>()
+                            Container existContainer = containerMapper.selectOne(new LambdaQueryWrapper<Container>()
                                     .eq(Container::getContainerName, containerName));
+                            if(existContainer != null) {
+                                //如果当前容器实例已存在，则更新
+                                containerMapper.update(container, new LambdaQueryWrapper<Container>()
+                                        .eq(Container::getContainerName, containerName));
+                            }else {
+                                //如果当前容器实例不存在，则插入一条新的容器实例
+                                containerMapper.insert(container);
+                            }
                         }
                         break;
                     }
