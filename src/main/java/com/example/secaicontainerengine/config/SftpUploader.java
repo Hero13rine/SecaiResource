@@ -189,32 +189,65 @@ public class SftpUploader {
     public void shRemoteScript(Session sshSession, String scriptPath) throws JSchException, IOException {
         // 执行脚本
         System.out.println("镜像脚本开始执行！！！");
-        // 执行脚本
+
+        // 请求伪终端
+        sshSession.setConfig("RequestPTY", "true");
+
+        // 创建 exec channel 来执行命令
         ChannelExec channelExec = (ChannelExec) sshSession.openChannel("exec");
-        String command = "echo '" + password + "' | sudo -S chmod +x " + scriptPath + " && echo '" + password + "' | sudo -S " + scriptPath;
+
+        // 拼接命令
+        String command = "echo '" + password + "' | sudo -S sh " + scriptPath;
         channelExec.setCommand(command);
 
         // 设置标准错误输出流
         InputStream errorStream = channelExec.getErrStream();
         BufferedReader errorReader = new BufferedReader(new InputStreamReader(errorStream));
 
-        channelExec.connect();
-
-        // 读取标准输出流
+        // 设置标准输出流
         InputStream inputStream = channelExec.getInputStream();
         BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
 
-        String line;
-        while ((line = reader.readLine()) != null) {
-            System.out.println("stdout: " + line);  // 打印脚本执行输出
-        }
+        // 连接并开始执行命令
+        channelExec.connect();
 
-        // 读取错误输出流
-        while ((line = errorReader.readLine()) != null) {
-            System.out.println("stderr: " + line);  // 打印错误输出
-        }
+        // 使用多线程分别读取输出流和错误流
+        Thread stdoutThread = new Thread(() -> {
+            try {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println("stdout: " + line);  // 打印标准输出
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+
+        Thread stderrThread = new Thread(() -> {
+            try {
+                String line;
+                while ((line = errorReader.readLine()) != null) {
+                    System.out.println("stderr: " + line);  // 打印标准错误输出
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+
+        // 启动读取线程
+        stdoutThread.start();
+        stderrThread.start();
 
         // 等待命令执行完成
+        while (!channelExec.isClosed()) {
+            try {
+                Thread.sleep(100);  // 等待命令执行完成
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+        // 断开连接
         channelExec.disconnect();
         System.out.println("镜像脚本执行完成！！！");
     }

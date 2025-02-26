@@ -43,6 +43,7 @@ k8s:
   config: k8s/config
   yaml: template/Pod.yml
   adversarial-yaml: template/attack_pod.yml
+  adversarial-gpu-yaml: template/attack_pod_gpu.yml
 
 sftp:
 #  host: 10.195.76.134
@@ -61,6 +62,9 @@ nfs:
   resultData: result
   systemData: systemData
   origin-data: originData
+
+docker:
+  registryHost: 10.195.9.104:5000
 
 es:
   name: secai-logs

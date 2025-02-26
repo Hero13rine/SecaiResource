@@ -56,6 +56,9 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     @Value("${k8s.adversarial-yaml}")
     private String k8sAdversarialYaml;
 
+    @Value("${k8s.adversarial-gpu-yaml}")
+    private String k8sAdversarialGpuYaml;
+
     @Value("${nfs.rootPath}")
     private String rootPath;
 
@@ -74,6 +77,9 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
 
     @Value("${nfs.evaluationData}")
     private String evaluationData;
+
+    @Value("${docker.registryHost}")
+    private String registryHost;
 
     //初始化接口
     public List<ByteArrayInputStream> init(Long userId, Map<String, String> imageUrl, Map<String, Map> imageParam) throws IOException, TemplateException {
@@ -115,12 +121,11 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                 return null;
             }
             if(imageName == null){
-                imageName = evaluationType;
 
                 // 测试
 //                imageName = "nginx:latest";
 //                imageName = "10.195.9.104:5000/sec_ai_image";
-                imageName = "10.195.9.104:5000/" + modelMessage.getId();
+                imageName = registryHost + "/" + modelMessage.getId();
 
             }
             //准备模板变量
@@ -138,7 +143,8 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
             values.put("modelId",String.valueOf(modelMessage.getId()));
 
             //生成填充好的yml文件字节流
-            String yamlContent = renderTemplate(k8sAdversarialYaml, values);
+            String yamlContent = renderTemplate(k8sAdversarialGpuYaml, values);
+//            String yamlContent = renderTemplate(k8sAdversarialYaml, values);
             ByteArrayInputStream ymlStream = new ByteArrayInputStream(yamlContent.getBytes());
             streams.add(ymlStream);
 
@@ -171,7 +177,6 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
 
                 Container container = Container.builder()
                         .containerName(containerName)
-                        .containerId(pod.getMetadata().getUid())
                         .nameSpace(pod.getMetadata().getNamespace())
                         .status(pod.getStatus().getPhase())
                         .restarts(0)
@@ -204,7 +209,8 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                                 //如果当前容器实例不存在，则插入一条新的容器实例
                                 containerMapper.insert(container);
                             }
-                        } else if (phase.equals("Succeeded") || phase.equals("Failed")) {
+//                        } else if (phase.equals("Succeeded") || phase.equals("Failed")) {
+                        } else if (phase.equals("Succeeded")) {
                             deleteSingle(userId, containerName);
                             Container existContainer = containerMapper.selectOne(new LambdaQueryWrapper<Container>()
                                     .eq(Container::getContainerName, containerName));

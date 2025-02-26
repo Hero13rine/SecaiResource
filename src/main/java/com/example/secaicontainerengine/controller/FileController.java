@@ -46,6 +46,9 @@ public class FileController {
     @Autowired
     private ModelEvaluationService modelEvaluationService;
 
+    @Value("${docker.registryHost}")
+    private String registryHost;
+
     @Autowired
     private KubernetesClient K8sClient;
 
@@ -138,12 +141,18 @@ public class FileController {
                     throw new BusinessException(ErrorCode.SYSTEM_ERROR, "复制 Dockerfile 失败");
                 }
 
+                // 模型保存路径（此处可执行进一步操作）
+                String condaEnv = processFilesInDirectory(modelMessage, modelSavePath);
+
                 // 将镜像相关脚本文件生成到压缩后的目录
                 Path shDestinationPath = Paths.get(modelSavePath, "imageOpe.sh");
-                FileUtils.generateImageSh(modelMessage, shDestinationPath);
+                FileUtils.generateImageSh(modelMessage, shDestinationPath, condaEnv, registryHost);
 
-                // 模型保存路径（此处可执行进一步操作）
-                processFilesInDirectory(modelMessage, modelSavePath);
+                // 将模型评测相关的代码生成的脚本文件生成到压缩后的目录
+                Path runShPath = Paths.get(modelSavePath, "run.sh");
+                FileUtils.generateRunSh(condaEnv, runShPath);
+
+
                 log.info("文件处理完成");
 
             } catch (Exception e) {

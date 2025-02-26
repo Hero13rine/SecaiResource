@@ -58,7 +58,7 @@ public class modelEvaluationController {
         // 测试
         BusinessConfig businessConfig = new BusinessConfig();
         businessConfig.setAdversarialAttack(true);
-        businessConfig.setBackdoorAttack(true);
+//        businessConfig.setBackdoorAttack(true);
         if(businessConfig != null) {
             modelMessage.setBusinessConfig(JSONUtil.toJsonStr(businessConfig));
         }

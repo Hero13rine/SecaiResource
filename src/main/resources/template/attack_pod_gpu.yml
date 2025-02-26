@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${podName}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: ${containerName}
+      image: ${imageName}
+      command: ["/bin/bash", "-c", "bash /app/userData/modelData/run.sh"]
+      ports:
+        - containerPort: 80
+      volumeMounts:
+        - name: model-data
+          mountPath: /app/${userData}/modelData
+        - name: evaluation-data
+          mountPath: /app/${userData}/${evaluationData}/${evaluationType}
+        - name: system-data
+          mountPath: /app/systemData
+      resources:
+        limits:
+          nvidia.com/gpu: "1" # 请求1个vGPUs
+          nvidia.com/gpumem: "3000" # 每个vGPU申请3000m显存 （可选，整数类型）
+          nvidia.com/gpucores: "10" # 每个vGPU的算力为30%实际显卡的算力 （可选，整数类型）
+  volumes:
+    - name: model-data
+      nfs:
+        server: ${nfsIP}
+        path: ${rootPath}/${userData}/${userId}/${modelId}/modelData
+        readOnly: false
+    - name: evaluation-data
+      nfs:
+        server: ${nfsIP}
+        path: ${rootPath}/${userData}/${userId}/${modelId}/${evaluationData}/${evaluationType}
+        readOnly: false
+    - name: system-data
+      nfs:
+        server: ${nfsIP}
+        path: ${rootPath}/${systemData}
+        readOnly: false

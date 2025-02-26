@@ -6,6 +6,7 @@ import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.SftpException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -99,10 +100,13 @@ public class FileUtils {
      * 遍历指定路径下的所有文件和文件夹，并将它们的绝对路径存入到 ModelMessage 中
      *
      * @param rootPath 需要遍历的路径
-     * @return ModelMessage 包含各类文件的路径信息
+//     * @return ModelMessage 包含各类文件的路径信息
+     @return conda_env 用户上传的环境的压缩包名称
      */
-    public static ModelMessage processFilesInDirectory(ModelMessage modelMessage, String rootPath) {
+    public static String processFilesInDirectory(ModelMessage modelMessage, String rootPath) {
 
+
+        String condaEnv = null;
 
         // 根目录
         File rootDir = new File(rootPath);
@@ -128,7 +132,15 @@ public class FileUtils {
                     }
                 } else {
                     // 判断文件名
-                    if (fileName.equalsIgnoreCase("requirements.txt")) {
+//                    if (fileName.equalsIgnoreCase("requirements.txt")) {
+//                        modelMessage.setEnvironmentAddress(absolutePath);
+//                    } else if (fileName.endsWith(".pth") || fileName.endsWith(".bin")) {
+//                        modelMessage.setWeightAddress(absolutePath);
+//                    } else if (fileName.endsWith(".yaml") || fileName.endsWith(".yml")) {
+//                        modelMessage.setParameterAddress(absolutePath);
+//                    }
+                    if (fileName.endsWith(".tar.gz")) {
+                        condaEnv = fileName.substring(0, fileName.lastIndexOf(".tar.gz"));
                         modelMessage.setEnvironmentAddress(absolutePath);
                     } else if (fileName.endsWith(".pth") || fileName.endsWith(".bin")) {
                         modelMessage.setWeightAddress(absolutePath);
@@ -139,7 +151,7 @@ public class FileUtils {
             }
         }
 
-        return modelMessage;
+        return condaEnv;
     }
 
     public static ModelMessage processFilesInRemoteDirectory(ChannelSftp sftpChannel, ModelMessage modelMessage, String remotePath) throws SftpException {
@@ -171,19 +183,51 @@ public class FileUtils {
         return modelMessage;
     }
 
+    public static void generateRunSh(String condaEnv, Path runShPath) throws IOException {
+        // 原始脚本模板（使用变量替换环境名）
+        String scriptContent = "#!/bin/bash\n\n" +
+                "# 确保脚本在执行时不会中途退出\n" +
+                "set -e\n\n" +
+                "# 1. 初始化 Conda 环境\n" +
+                "echo \"Initializing conda...\"\n" +
+                "conda init bash\n" +
+                "#source ~/.bashrc  # 确保 conda 初始化完成\n\n" +
+                "# 2. 激活指定的 Conda 环境\n" +
+                "echo \"Activating conda environment: " + condaEnv + "\"\n" +
+                "source activate " + condaEnv + "\n\n" +
+                "# 3. 运行模型测试代码(这里用模型代码代替)\n" +
+                "echo \"Running minist_detect_train.py...\"\n" +
+                "export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1\n" +
+                "python3 /app/userData/modelData/model/minist_detect_train.py\n\n" +
+                "# 4. 更新数据库\n" +
+                "echo \"Running update_table.py...\"\n" +
+                "python3 /app/systemData/database_code/update_table.py\n\n" +
+                "echo \"All scripts executed successfully!\"\n";
+
+        try {
+            Files.write(runShPath, scriptContent.getBytes());
+            log.info("模型评测脚本生成成功！！");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
 
-    public static void generateImageSh(ModelMessage modelMessage, Path shDestinationPath){
+    public static void generateImageSh(ModelMessage modelMessage, Path shDestinationPath, String condaEnv, String registryHost){
 
         Long userId = modelMessage.getUserId();
         Long modelId = modelMessage.getId();
         String buildAndPushScript = "#!/bin/bash\n" +
-                "cd /home/nfs/userData/" + userId + "/" + modelId + "/modelData\n" +
-                "sudo docker build -t " + modelId + ":latest .\n" +
-                "sudo docker tag " + modelId + ":latest 10.195.9.104:5000/" + modelId + "\n" +
-                "sudo docker push 10.195.9.104:5000/" + modelId + "\n";
+                "cd /home/nfs/k8s/userData/" + userId + "/" + modelId + "/modelData\n" +
+                "echo \"正在制作镜像...\"\n" +
+                "sudo docker build --build-arg condaEnv=" + condaEnv + " -t " + modelId + ":latest .\n" +
+                "echo \"正在给镜像打标签...\"\n" +
+                "sudo docker tag " + modelId + ":latest " + registryHost + "/" + modelId + "\n" +
+                "echo \"正在推送镜像到仓库...\"\n" +
+                "sudo docker push " + registryHost + "/" + modelId + "\n";
         try {
             Files.write(shDestinationPath, buildAndPushScript.getBytes());
+            log.info("镜像相关脚本生成成功！！");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

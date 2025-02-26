@@ -70,6 +70,13 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelMessageMapper, 
         SftpConnect sftpConnect = sftpUploader.connectNfs();
         ChannelSftp sftpChannel = sftpConnect.getSftpChannel();
         Session session = sftpConnect.getSession();
+
+
+        session.setConfig("LogLevel", "DEBUG");
+        // 设置客户端的超时和心跳包
+        session.setConfig("ServerAliveInterval", "60");  // 每60秒发送一个心跳包
+        session.setConfig("ServerAliveCountMax", "5");   // 如果连续5次没有响应，则断开连接
+
         sftpChannel.connect();
         for (String podYamlFile : podYamlFiles) {
             String outputRemoteDir = nfsPath + File.separator + userData
@@ -120,9 +127,6 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelMessageMapper, 
         }
         if(businessConfig.isBackdoorAttack()){
             podYamlFiles.add("backdoorAttack");
-        }
-        else{
-            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "不支持的攻击类型：");
         }
 
         // 如果没有指定攻击类型，则抛出异常
