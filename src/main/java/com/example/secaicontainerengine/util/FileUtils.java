@@ -103,7 +103,7 @@ public class FileUtils {
      * 遍历指定路径下的所有文件和文件夹，并将它们的绝对路径存入到 ModelMessage 中
      *
      * @param rootPath 需要遍历的路径
-//     * @return ModelMessage 包含各类文件的路径信息
+    //     * @return ModelMessage 包含各类文件的路径信息
      @return conda_env 用户上传的环境的压缩包名称
      */
     public static String processFilesInDirectory(ModelMessage modelMessage, String rootPath) {
@@ -207,6 +207,38 @@ public class FileUtils {
                 "export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1\n" +
                 "python3 /app/userData/modelData/model/" + modelFileName + "\n\n" +
 //                "python3 /app/userData/modelData/model/cifar10_detect_train.py\n\n" +
+                "# 4. 更新数据库\n" +
+                "echo \"Running update_table.py...\"\n" +
+                "python3 /app/systemData/database_code/update_table.py\n\n" +
+                "echo \"All scripts executed successfully!\"\n";
+
+        try {
+            Files.write(runShPath, scriptContent.getBytes());
+            log.info("模型评测脚本生成成功！！");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // 生成模型评测的脚本文件
+    public static void generateEvaluateRunSh(String condaEnv, Path runShPath) throws IOException {
+
+
+        // 原始脚本模板（使用变量替换环境名）
+        String scriptContent = "#!/bin/bash\n\n" +
+                "# 确保脚本在执行时不会中途退出\n" +
+                "set -e\n\n" +
+                "# 1. 初始化 Conda 环境\n" +
+                "echo \"Initializing conda...\"\n" +
+                "conda init bash\n" +
+                "#source ~/.bashrc  # 确保 conda 初始化完成\n\n" +
+                "# 2. 激活指定的 Conda 环境\n" +
+                "echo \"Activating conda environment: " + condaEnv + "\"\n" +
+                "source activate " + condaEnv + "\n\n" +
+                "# 3. 运行模型评测代码\n" +
+                "echo \"Running  模型评测...\"\n" +
+                "export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1\n" +
+                "python3 /app/systemData/evaluation_code/art/main4.py\n\n" +
                 "# 4. 更新数据库\n" +
                 "echo \"Running update_table.py...\"\n" +
                 "python3 /app/systemData/database_code/update_table.py\n\n" +

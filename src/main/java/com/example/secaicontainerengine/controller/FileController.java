@@ -78,7 +78,8 @@ public class FileController {
      */
     @PostMapping("/upload")
     public Map<String, Object> uploadFile(@RequestPart("file") MultipartFile multipartFile,
-                             UploadFileRequest uploadFileRequest, HttpServletRequest request) {
+                                          UploadFileRequest uploadFileRequest,
+                                          HttpServletRequest request) {
 
         //验证上传的文件是否满足要求
         String biz = uploadFileRequest.getBiz();
@@ -134,7 +135,8 @@ public class FileController {
                 String modelFileName = findFirstPyFileName(modelFilePath);
 
                 // 复制 Dockerfile 到解压后的目录
-                Path dockerSourcePath = Paths.get(System.getProperty("user.dir"), "src", "main", "resources", "Docker", "Dockerfile");
+//                Path dockerSourcePath = Paths.get(System.getProperty("user.dir"), "src", "main", "resources", "Docker", "Dockerfile");
+                Path dockerSourcePath = Paths.get(System.getProperty("user.dir"), "src", "main", "resources", "Docker", "Dockerfile_evaluate");
 
                 Path dockerDestinationPath = Paths.get(modelSavePath, "Dockerfile");
 
@@ -155,7 +157,8 @@ public class FileController {
 
                 // 将模型评测相关的代码生成的脚本文件生成到压缩后的目录
                 Path runShPath = Paths.get(modelSavePath, "run.sh");
-                FileUtils.generateRunSh(condaEnv, runShPath, modelFileName);
+//                FileUtils.generateRunSh(condaEnv, runShPath, modelFileName);
+                FileUtils.generateEvaluateRunSh(condaEnv, runShPath);
 
 
                 log.info("文件处理完成");
