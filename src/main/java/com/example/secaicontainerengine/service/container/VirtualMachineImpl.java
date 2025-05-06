@@ -51,4 +51,9 @@ public class VirtualMachineImpl extends ServiceImpl<ContainerMapper, Container> 
         return "";
     }
 
+    @Override
+    public List<String> getContainersByModelId(Long modelId) {
+        return List.of();
+    }
+
 }

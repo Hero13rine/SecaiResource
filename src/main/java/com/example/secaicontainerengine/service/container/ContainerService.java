@@ -40,5 +40,10 @@ public interface ContainerService extends IService<Container> {
      */
     String getStatus(String containerName);
 
-
+    /**
+     * 根据模型id获取所有关联容器的名称
+     * @param modelId
+     * @return
+     */
+    List<String> getContainersByModelId(Long modelId);
 }

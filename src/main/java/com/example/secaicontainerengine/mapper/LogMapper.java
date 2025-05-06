@@ -22,13 +22,19 @@ public interface LogMapper{
             "VALUE(#{containerName}, #{namespace}, #{messageKey}, #{messageValue}, #{logTime})")
     int insert(Log log);
 
-    @Select("SELECT messageValue, logTime from log WHERE containerName = #{containerName} AND messageKey = #{messageKey} " +
+    @Select("SELECT messageKey, messageValue, logTime from log WHERE containerName = #{containerName} AND messageKey = #{messageKey} " +
             "ORDER BY logTime DESC LIMIT 1")
     LogVO getLatestMessageValue(String containerName, String messageKey);
 
-    @Select("SELECT messageValue, logTime FROM log WHERE containerName = #{containerName} AND messageKey = #{messageKey} " +
-            "ORDER BY logTime")
-    List<LogVO> getAllMessageValue(String containerName, String messageKey);
+    @Select("SELECT messageKey,  messageValue, logTime, messageKey " +
+            "FROM (" +
+            "    SELECT messageValue, logTime, messageKey, " +
+            "           ROW_NUMBER() OVER (PARTITION BY messageKey ORDER BY logTime DESC) AS rn " +
+            "    FROM log " +
+            "    WHERE containerName = #{containerName} " +
+            ") AS ranked " +
+            "WHERE rn = 1")
+    List<LogVO> getAllMessageValue(String containerName);
 
     void deleteByContainers(List<String> containers);
 

@@ -22,18 +22,16 @@ public interface LogService{
 
     LogVO getLatestLogByMysql(String containerName, String messageKey);
 
-    List<LogVO> getAllLogByMysql(String containerName, String messageKey);
+    List<LogVO> getAllLogByMysql(String containerName);
 
     Map<String, LogVO> getLatestLogByModelId(Long modelId, String messageKey);
 
-    Map<String, List<LogVO>> getAllLogByModelId(Long modelId, String messageKey);
+    Map<String, List<LogVO>> getAllLogByModelId(Long modelId);
 
     void deleteByModelId(Long modelId);
 
     void deleteByContainerName(String containerName);
 
     void deleteByTime(LocalDateTime lastTime);
-
-    LogVO getLatestLogByES(String containerName, String messageKey) throws IOException;
 
 }

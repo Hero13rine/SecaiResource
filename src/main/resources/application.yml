@@ -65,6 +65,3 @@ nfs:
 
 docker:
   registryHost: 10.195.9.104:5000
-
-es:
-  name: secai-logs

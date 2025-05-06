@@ -52,4 +52,9 @@ public class DockerImpl extends ServiceImpl<ContainerMapper, Container> implemen
         return "";
     }
 
+    @Override
+    public List<String> getContainersByModelId(Long modelId) {
+        return List.of();
+    }
+
 }

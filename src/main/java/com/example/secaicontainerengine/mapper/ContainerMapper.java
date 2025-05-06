@@ -12,4 +12,7 @@ public interface ContainerMapper extends BaseMapper<Container> {
 
     @Select("select containerName from container where modelId = #{modelId}")
     List<String> getContainerNameByModelId(Long modelId);
+
+    @Select("select status from container where containerName=#{containerName}")
+    String getStatusByContainerName(String containerName);
 }

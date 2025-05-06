@@ -57,6 +57,11 @@ public class ContainerController {
         containerService.deleteAll(userId);
     }
 
+    @GetMapping("/{modelId}")
+    public List<String> getContainersByModelId(@PathVariable Long modelId){
+        return containerService.getContainersByModelId(modelId);
+    }
+
     @GetMapping("/monitor/{containerName}")
     public String monitor(@PathVariable String containerName) {
         return containerService.getStatus(containerName);

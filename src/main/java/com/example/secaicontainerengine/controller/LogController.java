@@ -42,9 +42,9 @@ public class LogController {
     }
 
     @GetMapping("/container/all")
-    public List<LogVO> getAllLogByContainerName(String containerName, String messageKey) {
-        log.info("查询日志，容器名称："+containerName+", "+messageKey);
-        return logService.getAllLogByMysql(containerName, messageKey);
+    public List<LogVO> getAllLogByContainerName(String containerName) {
+        log.info("查询日志，容器名称："+containerName);
+        return logService.getAllLogByMysql(containerName);
     }
 
     @GetMapping("/model/latest")
@@ -54,9 +54,9 @@ public class LogController {
     }
 
     @GetMapping("/model/all")
-    public Map<String, List<LogVO>> getAllLogByModelId(Long modelId, String messageKey) {
-        log.info("查询日志，模型id："+modelId+", "+messageKey);
-        return logService.getAllLogByModelId(modelId, messageKey);
+    public Map<String, List<LogVO>> getAllLogByModelId(Long modelId) {
+        log.info("查询日志，模型id："+modelId);
+        return logService.getAllLogByModelId(modelId);
     }
 
     @DeleteMapping("/container/{containerName}")

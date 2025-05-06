@@ -248,15 +248,11 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
 
     //监听接口2-只输出一次容器的状态
     public String getStatus(String containerName) {
-        Pod pod = K8sClient.pods().inNamespace("default").withName(containerName).get();
-        if (pod != null) {
-            // 输出 Pod 的 Phase
-            return pod.getStatus().getPhase();
-        } else {
-            return "该Pod不存在";
-        }
+        String name = containerMapper.getStatusByContainerName(containerName);
+        if (name == null)
+            return containerName+"容器不存在";
+        return name;
     }
-
 
     //回收接口1-删除指定用户的所有容器
     public void deleteAll(Long userId) {
@@ -291,6 +287,10 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         log.info("回收接口：已删除Pod-" + containerName);
     }
 
+
+    public List<String> getContainersByModelId(Long modelId) {
+        return containerMapper.getContainerNameByModelId(modelId);
+    }
 
 
 }

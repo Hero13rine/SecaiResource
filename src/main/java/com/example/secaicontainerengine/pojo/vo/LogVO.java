@@ -10,6 +10,8 @@ import java.time.LocalDateTime;
 @Data
 public class LogVO {
 
+    private String messageKey;
+
     private String messageValue;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
