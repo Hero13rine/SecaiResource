@@ -44,6 +44,9 @@ public class ModelMessage implements Serializable {
     // 模型评测状态
     private Integer status;
 
+    // 是否进行调度
+    private Integer isActive;
+
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;

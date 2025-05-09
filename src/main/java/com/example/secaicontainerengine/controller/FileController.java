@@ -2,16 +2,11 @@ package com.example.secaicontainerengine.controller;
 
 
 import cn.hutool.core.io.FileUtil;
-import cn.hutool.json.JSONUtil;
 import com.example.secaicontainerengine.common.ErrorCode;
 import com.example.secaicontainerengine.config.SftpUploader;
 import com.example.secaicontainerengine.constant.FileConstant;
 import com.example.secaicontainerengine.exception.BusinessException;
 import com.example.secaicontainerengine.pojo.dto.file.UploadFileRequest;
-import com.example.secaicontainerengine.pojo.dto.model.BusinessConfig;
-import com.example.secaicontainerengine.pojo.dto.model.EvaluationConfig;
-import com.example.secaicontainerengine.pojo.dto.model.ModelConfig;
-import com.example.secaicontainerengine.pojo.dto.model.ResourceConfig;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.example.secaicontainerengine.pojo.entity.User;
 import com.example.secaicontainerengine.pojo.enums.FileUploadBizEnum;
@@ -23,7 +18,6 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -38,7 +32,6 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
-import static com.example.secaicontainerengine.common.ErrorCode.SYSTEM_ERROR;
 import static com.example.secaicontainerengine.util.FileUtils.*;
 
 @RestController

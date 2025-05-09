@@ -11,11 +11,12 @@ import com.example.secaicontainerengine.pojo.dto.model.ModelConfig;
 import com.example.secaicontainerengine.pojo.dto.model.ModelEvaluationRequest;
 import com.example.secaicontainerengine.pojo.dto.model.ResourceConfig;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
+import com.example.secaicontainerengine.pojo.entity.ScheduledTable;
 import com.example.secaicontainerengine.service.modelEvaluation.ModelEvaluationService;
+import com.example.secaicontainerengine.service.scheduledTable.ScheduledTableService;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,6 +30,9 @@ public class modelEvaluationController {
 
     @Autowired
     private ModelEvaluationService modelEvaluationService;
+
+    @Autowired
+    private ScheduledTableService scheduledTaskService;
 
     @Autowired
     private ExecutorService executorService;
@@ -86,5 +90,36 @@ public class modelEvaluationController {
         // 立即返回响应，告诉前端评测任务已启动
         return ResultUtils.success("系统正在评测中...");
 
+    }
+
+    // 任务调度方式启动
+    @PostMapping("/startNew")
+    public BaseResponse<?> startModelEvaluationNew(@RequestBody ModelEvaluationRequest modelEvaluationRequest){
+        Long modelId = modelEvaluationRequest.getModelId();
+        ModelMessage modelMessage = modelEvaluationService.getById(modelId);
+        if(modelMessage==null){
+            return ResultUtils.error(4000, "不存在该modelId");
+        }
+        switch (modelMessage.getStatus()){
+            // 0在数据库中代表还未上传至nfs服务器
+            case 0:
+                return ResultUtils.error(4001,"数据正在上传至nfs服务器，请稍后再试");
+            // 1在数据库中代表已经上传至nfs服务器
+            case 1:
+                ScheduledTable task=new ScheduledTable();
+                task.setModelId(modelId);
+                scheduledTaskService.save(task);
+                break;
+            // 2代表该模型在评测中
+            case 2:
+                return ResultUtils.error(4002, "该modelId正在评测中");
+            // 3代表该模型已评测成功
+            case 3:
+                return ResultUtils.error(4003, "该modelId已评测成功");
+            // 4代表该模型已评测失败
+            case 4:
+                return ResultUtils.error(4004, "该modelId已评测失败");
+        }
+        return ResultUtils.success("该modelId成功加入任务调度队列");
     }
 }
