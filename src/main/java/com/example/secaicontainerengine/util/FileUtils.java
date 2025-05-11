@@ -2,11 +2,15 @@ package com.example.secaicontainerengine.util;
 
 import com.example.secaicontainerengine.common.ErrorCode;
 import com.example.secaicontainerengine.exception.BusinessException;
+import com.example.secaicontainerengine.pojo.dto.model.EvaluationConfig;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.SftpException;
 import lombok.extern.slf4j.Slf4j;
-
+import org.springframework.beans.factory.annotation.Value;
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.Constructor;
 import java.io.*;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -15,6 +19,8 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+
+import static com.example.secaicontainerengine.util.YamlUtil.renderTemplate;
 
 @Slf4j
 public class FileUtils {

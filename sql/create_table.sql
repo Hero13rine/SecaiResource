@@ -88,18 +88,6 @@ create table if not exists model_evaluation
 
 ) comment '评测信息表' collate = utf8mb4_unicode_ci;
 
--- 调度表
-CREATE TABLE if not exists `scheduled_table` (
-    `id` bigint NOT NULL AUTO_INCREMENT COMMENT '自增主键',
-    `modelId` bigint DEFAULT NULL COMMENT '该任务关联的模型id',
-    `status` int DEFAULT '0' COMMENT '当前任务的状态（0代表还未调度，1代表已经调度，2代表评测成功，3代表评测失败，4代表已经计算评测结果）',
-    `createTime` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '该任务的创建时间',
-    `scheduleTime` datetime DEFAULT NULL COMMENT '调度时间',
-    `reviewer` varchar(255) DEFAULT NULL COMMENT '扩展字段，当前调度任务的审核人',
-    `isWaiting` int DEFAULT NULL COMMENT '扩展字段，是否在等待资源满足当前任务的需求',
-   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='调度任务表，用于保存所有被调度的任务';
-
 -- 日志表
 create table if not exists log
 (
@@ -110,3 +98,29 @@ create table if not exists log
     messageValue  varchar(100)                       null comment '消息value',
     logTime       datetime default CURRENT_TIMESTAMP null comment '日志的生成时间'
 ) comment '日志表';
+
+-- 模型评测成功触发器
+create definer = root@localhost trigger container_exec_success
+    after update
+    on model_evaluation
+    for each row
+BEGIN
+    IF NEW.backdoorAttackStatus = '已完成' AND NEW.adversarialAttackStatus = '已完成' THEN
+        UPDATE model_message
+        SET status = '3'
+        WHERE id = NEW.modelId;
+    END IF;
+END;
+
+-- 模型评测失败触发器
+create definer = root@localhost trigger container_exec_failure
+    after update
+    on container
+    for each row
+BEGIN
+    IF NEW.status = 'Failed' THEN
+        UPDATE model_message
+        SET status = '4'
+        WHERE id = NEW.modelId;
+    END IF;
+END;
