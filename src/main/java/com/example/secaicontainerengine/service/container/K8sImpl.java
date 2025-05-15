@@ -8,6 +8,7 @@ import com.example.secaicontainerengine.mapper.ContainerMapper;
 import com.example.secaicontainerengine.mapper.EvaluationMethodMapper;
 import com.example.secaicontainerengine.mapper.EvaluationResultMapper;
 import com.example.secaicontainerengine.pojo.dto.model.BusinessConfig;
+import com.example.secaicontainerengine.pojo.dto.model.ResourceConfig;
 import com.example.secaicontainerengine.pojo.entity.*;
 import com.example.secaicontainerengine.service.modelEvaluation.EvaluationResultService;
 import com.example.secaicontainerengine.service.modelEvaluation.ModelEvaluationService;
@@ -34,6 +35,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.concurrent.*;
+
 
 import static com.example.secaicontainerengine.util.YamlUtil.getName;
 import static com.example.secaicontainerengine.util.YamlUtil.renderTemplate;
@@ -99,6 +101,15 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     @Autowired
     private ModelEvaluationService modelEvaluationService;
 
+    @Value("${k8s.evaluation-resources.limits.gpu-memory}")
+    private Integer evaluationGpuMemory;
+
+    @Value("${k8s.evaluation-resources.limits.gpu-core}")
+    private Integer evaluationGpuCore;
+
+    @Value("${k8s.evaluation-resources.limits.gpu-num}")
+    private Integer evaluationGpuNum;
+
     //初始化接口
     public List<ByteArrayInputStream> init(Long userId, Map<String, String> imageUrl, Map<String, Map> imageParam) throws IOException, TemplateException {
         List<ByteArrayInputStream> streams = new ArrayList<>();
@@ -106,12 +117,6 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
             //pod命名方式：url+用户id
             String podName = value+userId;
             log.info("初始化接口：Pod的名称-" + podName);
-            boolean podExist = redisTemplate.hasKey(userId+":"+podName);
-            //如果已存在，继续创建下一个pod
-            if(podExist) {
-                log.info("初始化接口：该Pod之前已启动-" + podName);
-                continue;
-            }
             //准备模板变量
             Map<String, String> values = new HashMap<>();
             values.put("pod_name", podName);
@@ -126,26 +131,19 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     }
 
     //初始化接口
-    public List<ByteArrayInputStream> initNew(ModelMessage modelMessage, List<String> evaluationTypes, String imageName) throws IOException, TemplateException {
+    public List<ByteArrayInputStream> initNew(ModelMessage modelMessage, List<String> evaluationTypes) throws IOException, TemplateException {
         List<ByteArrayInputStream> streams = new ArrayList<>();
         for (String evaluationType : evaluationTypes) {
-            //pod命名方式：url+用户id
+            //pod命名方式：模型id-用户id-评测方法
             String podName = modelMessage.getUserId() + "-" + modelMessage.getId() + "-" + evaluationType.toLowerCase();
             log.info("初始化接口：Pod的名称-" + podName);
-            boolean podExist = redisTemplate.hasKey(modelMessage.getUserId()+":"+podName);
-            //如果已存在，继续创建下一个pod
-            if(podExist) {
-                log.info("初始化接口：该Pod之前已启动-" + podName);
-                return null;
-            }
-            if(imageName == null){
+            String imageName = registryHost + "/" + modelMessage.getId();
 
-                // 测试
-//                imageName = "nginx:latest";
-//                imageName = "10.195.9.104:5000/sec_ai_image";
-                imageName = registryHost + "/" + modelMessage.getId();
+            ResourceConfig podResourceLimits = calculatePodResourceFromModel(modelMessage);
+            String gpuCoreLimits = podResourceLimits.getGpuCoreRequired().toString();
+            String gpuMemoryLimits = podResourceLimits.getGpuMemoryRequired().toString();
+            String gpuNumLimits = podResourceLimits.getGpuNumRequired().toString();
 
-            }
             //准备模板变量
             Map<String, String> values = new HashMap<>();
             values.put("podName", podName);
@@ -159,6 +157,9 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
             values.put("rootPath",rootPath);
             values.put("userId",String.valueOf(modelMessage.getUserId()));
             values.put("modelId",String.valueOf(modelMessage.getId()));
+            values.put("gpuCoreLimits",gpuCoreLimits);
+            values.put("gpuMemoryLimits",gpuMemoryLimits);
+            values.put("gpuNumLimits",gpuNumLimits);
 
             //生成填充好的yml文件字节流
             String yamlContent = renderTemplate(k8sAdversarialGpuYaml, values);
@@ -263,10 +264,6 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                     case MODIFIED: {
                         if(phase.equals("Running")) {
                             log.info("启动接口：已启动的Pod名称-" + containerName);
-                            String containerKey = userId + ":" +containerName;
-                            //1.保存容器实例到redis中
-                            redisTemplate.opsForValue().set(containerKey, container);
-                            log.info("启动接口：容器实例已记录到Redis中-" + containerName);
                             //2.保存容器实例到mysql中
                             Container existContainer = containerMapper.selectOne(new LambdaQueryWrapper<Container>()
                                     .eq(Container::getContainerName, containerName));
@@ -324,35 +321,8 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         return name;
     }
 
-    //回收接口1-删除指定用户的所有容器
-    public void deleteAll(Long userId) {
-        //获取该用户下的所有key
-        String pattern = userId+":*";
-        Set<String> keys = redisTemplate.keys(pattern);
-        if(keys == null || keys.isEmpty()) {
-            return;
-        }
-        //保存待删除的容器列表
-        List<Container> removeList = new ArrayList<>();
-        keys.forEach(key -> {
-            Object container =  redisTemplate.opsForValue().get(key);
-            if(container != null) {
-                removeList.add(objectMapper.convertValue(container,Container.class));
-            }
-            redisTemplate.delete(key);
-        });
-        log.info("回收接口：待删除的容器列表-" + removeList.toString());
-        //逐个删除容器
-        removeList.forEach(container -> {
-            K8sClient.pods().inNamespace("default").withName(container.getContainerName()).delete();
-            log.info("回收接口：已删除Pod-" + container.getContainerName());
-        });
-    }
-
     //回收接口2-删除用户的单个容器
     public void deleteSingle(Long userId, String containerName) {
-        String containerKey = userId + ":" + containerName;
-        redisTemplate.delete(containerKey);
         K8sClient.pods().inNamespace("default").withName(containerName).delete();
         log.info("回收接口：已删除Pod-" + containerName);
     }
@@ -360,6 +330,32 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
 
     public List<String> getContainersByModelId(Long modelId) {
         return containerMapper.getContainerNameByModelId(modelId);
+    }
+
+    @Override
+    // 从用户填入的模型运行需要的资源信息计算模型评测开启的pod的资源信息
+    public ResourceConfig calculatePodResourceFromModel(ModelMessage modelMessage){
+
+        // 获取到具体的资源信息
+        String resourceConfigStr = modelMessage.getResourceConfig();
+        ResourceConfig resourceConfig = JSONUtil.toBean(resourceConfigStr, ResourceConfig.class);
+        Integer gpuNumRequired = resourceConfig.getGpuNumRequired();
+        Integer gpuMemoryRequired = resourceConfig.getGpuMemoryRequired();
+        Integer gpuCoreRequired = resourceConfig.getGpuCoreRequired();
+
+        // 计算pod相关yaml文件中limits资源
+        Integer gpuMemoryLimits = gpuMemoryRequired + evaluationGpuMemory;
+        Integer gpuCoreLimits = gpuCoreRequired + evaluationGpuCore;
+        Integer gpuNumLimits = gpuNumRequired + evaluationGpuNum;
+
+        // 返回
+        ResourceConfig podResourceLimits = ResourceConfig.builder()
+                .gpuMemoryRequired(gpuMemoryLimits)
+                .gpuCoreRequired(gpuCoreLimits)
+                .gpuNumRequired(gpuNumLimits)
+                .build();
+
+        return podResourceLimits;
     }
 
 

@@ -22,9 +22,9 @@ spec:
           mountPath: /app/systemData
       resources:
         limits:
-          nvidia.com/gpu: "1" # 请求1个vGPUs
-          nvidia.com/gpumem: "3000" # 每个vGPU申请3000m显存 （可选，整数类型）
-          nvidia.com/gpucores: "10" # 每个vGPU的算力为30%实际显卡的算力 （可选，整数类型）
+          nvidia.com/gpu: ${gpuNumLimits} # 请求1个vGPUs
+          nvidia.com/gpumem: ${gpuMemoryLimits} # 每个vGPU申请3000m显存 （可选，整数类型）
+          nvidia.com/gpucores: ${gpuCoreLimits} # 每个vGPU的算力为30%实际显卡的算力 （可选，整数类型）
   volumes:
     - name: model-data
       nfs:

@@ -235,13 +235,10 @@ public class FileUtils {
                 "# 2. 激活指定的 Conda 环境\n" +
                 "echo \"Activating conda environment: " + condaEnv + "\"\n" +
                 "source activate " + condaEnv + "\n\n" +
-                "# 3. 运行模型评测代码\n" +
+                "# 3. 运行模型评测代码并更新数据库\n" +
                 "echo \"Running  模型评测...\"\n" +
                 "export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1\n" +
                 "python3 /app/systemData/evaluation_code/art/eva_start.py\n\n" +
-                "# 4. 更新数据库\n" +
-                "echo \"Running update_table.py...\"\n" +
-                "python3 /app/systemData/database_code/update_table.py\n\n" +
                 "echo \"All scripts executed successfully!\"\n";
 
         try {
