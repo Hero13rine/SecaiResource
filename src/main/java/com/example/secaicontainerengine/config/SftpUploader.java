@@ -84,6 +84,7 @@ public class SftpUploader {
             String remoteModelPath = remoteDir + File.separator + files.get(0).getFilename();
             modelMessage.setAllDataAddress(remoteModelPath);
             processFilesInRemoteDirectory(sftpChannel, modelMessage, remoteModelPath);
+            modelMessage.setStatus(1);
             modelMessageService.updateById(modelMessage);
 
             //上传完毕后，删除本地目录

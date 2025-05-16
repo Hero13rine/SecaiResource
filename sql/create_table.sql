@@ -38,23 +38,13 @@ create table if not exists container
     isDelete      tinyint  default 0                 not null comment '是否删除'
 ) comment '容器' collate = utf8mb4_unicode_ci;
 
--- 镜像表
-create table if not exists image
-(
-    id         bigint auto_increment comment 'id' primary key,
-    imageName varchar(255)                       NOT NULL COMMENT '镜像名称',
-    url        varchar(255)                       NOT NULL COMMENT '拉取地址',
-    size       bigint                             NOT NULL COMMENT '镜像大小',
-    createTime datetime default CURRENT_TIMESTAMP not null comment '创建时间',
-    updateTime datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
-    isDelete   tinyint  default 0                 not null comment '是否删除'
-) comment '容器' collate = utf8mb4_unicode_ci;
 
 -- 模型信息表
 create table if not exists model_message
 (
     `id`                 BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
     `userId`             BIGINT       NOT NULL COMMENT '用户ID',
+    `modelName`          VARCHAR(512)  COMMENT '模型名称',
     `modelAddress`       VARCHAR(512)  COMMENT '模型文件存放地址',
     `datasetAddress`     VARCHAR(512)  COMMENT '数据集存放地址',
     `environmentAddress` VARCHAR(512)  COMMENT '运行环境配置文件地址',
@@ -64,7 +54,7 @@ create table if not exists model_message
     `resourceConfig`     TEXT         NULL COMMENT '资源信息(json数组)',
     `businessConfig`     TEXT         NULL COMMENT '业务信息(json数组)',
     `allDataAddress`     VARCHAR(512) NULL COMMENT '模型所有数据的文件夹地址',
-    `status`             INT      DEFAULT 0 COMMENT '模型状态 0-待评测(未上传) 1-待评测(已上传) 2-评测中 3-成功 4-失败',
+    `status`             INT      DEFAULT 0 COMMENT '模型状态 0-未上传 1-已上传',
     `createTime`         DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updateTime`         DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `isDeleted`          TINYINT  DEFAULT 0 COMMENT '逻辑删除标志（0: 正常, 1: 已删除）'
@@ -75,6 +65,7 @@ create table if not exists model_evaluation
 (
    `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键',   -- 唯一的ID，自动增长
    `modelId` BIGINT NOT NULL COMMENT '模型ID',               -- 模型ID
+   `modelName`          VARCHAR(512)  COMMENT '模型名称',
    `userId` BIGINT NOT NULL COMMENT '用户ID',                -- 用户ID
    `modelScore` JSON COMMENT '模型评测类别得分（总得分，后门攻击，对抗攻击..）',
    `status` ENUM('待评测', '评测中', '成功', '失败') NOT NULL,

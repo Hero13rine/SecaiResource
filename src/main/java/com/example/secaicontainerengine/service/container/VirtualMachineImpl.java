@@ -2,6 +2,7 @@ package com.example.secaicontainerengine.service.container;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.secaicontainerengine.mapper.ContainerMapper;
+import com.example.secaicontainerengine.pojo.dto.model.ResourceConfig;
 import com.example.secaicontainerengine.pojo.entity.Container;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import freemarker.template.TemplateException;
@@ -21,7 +22,7 @@ public class VirtualMachineImpl extends ServiceImpl<ContainerMapper, Container> 
     }
 
     @Override
-    public List<ByteArrayInputStream> initNew(ModelMessage modelMessage, List<String> podYamlFile, String modelName) throws IOException, TemplateException {
+    public List<ByteArrayInputStream> initNew(ModelMessage modelMessage, List<String> podYamlFile) throws IOException, TemplateException {
         return List.of();
     }
 
@@ -31,10 +32,6 @@ public class VirtualMachineImpl extends ServiceImpl<ContainerMapper, Container> 
 
     }
 
-    @Override
-    public void deleteAll(Long userId) {
-
-    }
 
     @Override
     public void deleteSingle(Long userId, String containerName) {
@@ -54,6 +51,11 @@ public class VirtualMachineImpl extends ServiceImpl<ContainerMapper, Container> 
     @Override
     public List<String> getContainersByModelId(Long modelId) {
         return List.of();
+    }
+
+    @Override
+    public ResourceConfig calculatePodResourceFromModel(ModelMessage modelMessage) {
+        return null;
     }
 
 }

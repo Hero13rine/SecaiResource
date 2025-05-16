@@ -51,11 +51,6 @@ public class ContainerController {
 //        return "请求成功";
 //    }
 
-    @DeleteMapping("/delete/{userId}")
-    public void delete(@PathVariable Long userId) {
-        log.info("开始回收用户{}的容器：", userId);
-        containerService.deleteAll(userId);
-    }
 
     @GetMapping("/{modelId}")
     public List<String> getContainersByModelId(@PathVariable Long modelId){

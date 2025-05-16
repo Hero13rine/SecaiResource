@@ -17,6 +17,8 @@ public class ModelMessage implements Serializable {
 
     private Long userId;
 
+    private String modelName;
+
     private String modelAddress;
 
     private String datasetAddress;

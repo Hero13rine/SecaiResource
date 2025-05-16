@@ -15,6 +15,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -44,9 +45,10 @@ public class ModelEvaluationController {
 
 
 
-    @PostMapping("/start")
-    public BaseResponse<?> startModelEvaluation(@RequestBody ModelEvaluationRequest modelEvaluationRequest) {
-        Long modelId = modelEvaluationRequest.getModelId();
+    @PostMapping("/start/{modelId}")
+//    public BaseResponse<?> startModelEvaluation(@RequestBody ModelEvaluationRequest modelEvaluationRequest) {
+    public BaseResponse<?> startModelEvaluation(@PathVariable Long modelId) {
+//        Long modelId = modelEvaluationRequest.getModelId();
 
 //         测试
 
@@ -94,13 +96,16 @@ public class ModelEvaluationController {
                 );
                 okhttp3.RequestBody body = okhttp3.RequestBody.create(job, MediaType.parse("application/json; charset=utf-8"));
                 Request request = new Request.Builder()
-                        .url("http://localhost:8080/monitor/job")
+                        .url("http://10.195.34.44:8080/monitor/job")
                         .post(body)
                         .addHeader("Content-Type", "application/json")
                         .build();
+                log.info("**************************88");
                 try {
                     Response response = okHttpClient.newCall(request).execute();
+                    log.info("**************************88");
                     log.info(String.valueOf(response.body()));
+                    log.info("**************************77");
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }

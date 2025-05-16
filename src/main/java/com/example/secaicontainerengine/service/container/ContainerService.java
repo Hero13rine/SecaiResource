@@ -1,6 +1,7 @@
 package com.example.secaicontainerengine.service.container;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.example.secaicontainerengine.pojo.dto.model.ResourceConfig;
 import com.example.secaicontainerengine.pojo.entity.Container;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import freemarker.template.TemplateException;
@@ -15,13 +16,10 @@ public interface ContainerService extends IService<Container> {
     //初始化接口
     List<ByteArrayInputStream> init(Long userId, Map<String, String> imageUrl, Map<String, Map> imageParam) throws IOException, TemplateException;
 
-    List<ByteArrayInputStream> initNew(ModelMessage modelMessage, List<String> podYamlFile, String modelName) throws IOException, TemplateException;
+    List<ByteArrayInputStream> initNew(ModelMessage modelMessage, List<String> podYamlFile) throws IOException, TemplateException;
 
     //启动接口
     void start(Long userId, Long modelId, List<ByteArrayInputStream> streams) throws IOException;
-
-    //回收接口1-删除指定用户的所有容器
-    void deleteAll(Long userId);
 
     //回收接口2-删除用户的单个容器
     void deleteSingle(Long userId, String containerName);
@@ -46,5 +44,7 @@ public interface ContainerService extends IService<Container> {
      * @return
      */
     List<String> getContainersByModelId(Long modelId);
+
+    ResourceConfig calculatePodResourceFromModel(ModelMessage modelMessage);
 
 }

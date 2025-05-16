@@ -78,7 +78,7 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
         // 根据不同的攻击类型来构造 Pod 的配置信息
         List<String> podYamlFiles = JSONUtil.toBean(modelMessage.getBusinessConfig(), BusinessConfig.class).getEvaluateMethods();
 
-        List streams = containerService.initNew(modelMessage, podYamlFiles, null);
+        List streams = containerService.initNew(modelMessage, podYamlFiles);
 
         // 创建nfs远程目录
         SftpConnect sftpConnect = sftpUploader.connectNfs();
@@ -120,6 +120,7 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
         // 初始化模型评测表
         ModelEvaluation modelEvaluation = ModelEvaluation.builder()
                         .modelId(modelMessage.getId()).userId(modelMessage.getUserId())
+                        .modelName(modelMessage.getModelName())
                         .status("评测中")
                         .build();
 

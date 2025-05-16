@@ -1,12 +1,16 @@
 package com.example.secaicontainerengine.util;
 
+import cn.hutool.json.JSONUtil;
+import com.example.secaicontainerengine.pojo.dto.model.ResourceConfig;
 import com.example.secaicontainerengine.pojo.dto.result.PodResult;
+import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -37,6 +41,7 @@ public class PodUtil {
         return false;
     }
 
+    // 从评测结果计算得分
     // todo 示例逻辑，需根据实际业务调整
     public static BigDecimal calculateScoreFromResult(PodResult rawResult){
         BigDecimal accuracy = rawResult.getAccuracy();

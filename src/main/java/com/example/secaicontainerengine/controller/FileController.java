@@ -81,10 +81,12 @@ public class FileController {
     /**
      * 文件上传，并解压文件，同时将解压后的模型的相关文件的地址保存到数据表model_message中
      */
-    @PostMapping("/upload")
+    @PostMapping("/upload/{userId}")
     public Map<String, Object> uploadFile(@RequestPart("file") MultipartFile multipartFile,
                                           @RequestPart("data") UploadFileRequest uploadFileRequest,
-                                          HttpServletRequest request) {
+                                          @PathVariable Long userId
+//                                          HttpServletRequest request
+                                            ) {
 
         //验证上传的文件是否满足要求
         String biz = uploadFileRequest.getBiz();
@@ -95,10 +97,15 @@ public class FileController {
         validFile(multipartFile, fileUploadBizEnum);
         log.info("文件验证通过");
 
-//        User loginUser = userService.getLoginUser(request);
-        //开发时暂时设置不需要登陆
+        // 若依调用
         User loginUser = new User();
-        loginUser.setId(1242343443L);
+        loginUser.setId(userId);
+
+        //本服务使用
+//        User loginUser = userService.getLoginUser(request);
+//        开发时暂时设置不需要登陆
+//        User loginUser = new User();
+//        loginUser.setId(1242343443L);
 
         // 文件目录：根据业务、用户来划分
         String uuid = RandomStringUtils.randomAlphanumeric(8);
@@ -120,6 +127,8 @@ public class FileController {
 
         ModelConfig modelConfig = uploadFileRequest.getModelConfig();
         if(modelConfig != null) {
+            String modelNetName = modelConfig.getModelNetName();
+            modelMessage.setModelName(modelNetName);
             modelMessage.setModelConfig(JSONUtil.toJsonStr(modelConfig));
         }else{
             throw new BusinessException(SYSTEM_ERROR,"modelConfig上传失败");

@@ -20,6 +20,8 @@ public class ModelEvaluation {
 
     private Long modelId;
 
+    private String modelName;
+
     private Long userId;
 
     private String modelScore;

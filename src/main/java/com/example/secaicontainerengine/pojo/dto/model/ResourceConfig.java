@@ -1,9 +1,11 @@
 package com.example.secaicontainerengine.pojo.dto.model;
 
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import lombok.Builder;
 import lombok.Data;
 
 @Data
+@Builder
 public class ResourceConfig {
 
     // 需要的cpu核数，以m为单位，代表比例；250m为0.25核
