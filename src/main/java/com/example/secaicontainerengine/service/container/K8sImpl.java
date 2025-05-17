@@ -175,10 +175,6 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     //启动接口
     public void start(Long userId, Long modelId, List<ByteArrayInputStream> streams) throws IOException {
 
-        // 1.初始化CountDownLatch数量
-        CountDownLatch latch = new CountDownLatch(streams.size());
-
-
         for (ByteArrayInputStream stream : streams) {
             // 2.获取容器的名字
             String containerName = getName(stream);
@@ -215,24 +211,7 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
 
                 System.out.println("开启pod花费时间: " + executionTime + " 毫秒");
                 watchStatus(userId, modelId, containerName);
-                latch.countDown();
             });
-        }
-        try {
-            // 最多等待60分钟
-            boolean allCompleted = latch.await(60, TimeUnit.MINUTES);
-
-            if (allCompleted) {
-                // 7. 所有Pod完成后，执行统计分数逻辑
-                evaluationResultService.calculateAndUpdateScores(modelId);
-            } else {
-                // 处理超时（如终止未完成的Pod、记录警告）
-                modelEvaluationService.handleTimeout(modelId);
-            }
-        } catch (InterruptedException e) {
-            // 处理中断（恢复中断状态）
-            Thread.currentThread().interrupt();
-            log.error("等待Pod完成时被中断");
         }
     }
 
