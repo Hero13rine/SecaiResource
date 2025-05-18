@@ -117,15 +117,13 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
         sftpChannel.disconnect();
         session.disconnect();
 
-        // 初始化模型评测表
-        ModelEvaluation modelEvaluation = ModelEvaluation.builder()
-                        .modelId(modelMessage.getId()).userId(modelMessage.getUserId())
-                        .modelName(modelMessage.getModelName())
-                        .status("评测中")
-                        .build();
-
-
-        modelEvaluationMapper.insert(modelEvaluation);
+        // 修改表状态
+        // 根据模型id获取到模型评测表的对应记录
+        QueryWrapper<ModelEvaluation> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("modelId", modelMessage.getId());
+        ModelEvaluation modelEvaluation = modelEvaluationMapper.selectOne(queryWrapper);
+        modelEvaluation.setStatus("评测中");
+        modelEvaluationMapper.updateById(modelEvaluation);
 
         // 使用 K8sClient 启动 Pod
         containerService.start(modelMessage.getUserId(), modelMessage.getId(), streams);
