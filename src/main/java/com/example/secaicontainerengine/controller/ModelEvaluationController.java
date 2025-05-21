@@ -83,7 +83,7 @@ public class ModelEvaluationController {
     @PostMapping("/result/{modelId}")
     public GenerateReport getResultReport(@PathVariable Long modelId){
         GenerateReport resultReport = evaluationResultService.getResultReport(modelId);
-        return  resultReport;
+        return resultReport;
     }
 
     // 任务调度方式启动

@@ -240,7 +240,7 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
         );
 
         RobustnessMetricsCleanAdv robustnessMetricsCleanAdv = RobustnessMetricsCleanAdv.builder()
-                .adversarialMetric(new CleanAdv(cleanMean, advMean))
+                .adversarialMetric(new CleanAdv(cleanMean.multiply(new BigDecimal(100)), advMean.multiply(new BigDecimal(100))))
                 .gradientSensitivityMetric(new CleanAdv(new BigDecimal("65.5"), new BigDecimal("30.5")))
                 .confidenceVarianceMetric(new CleanAdv(new BigDecimal("68.5"), new BigDecimal("29.5")))
                 .build();
