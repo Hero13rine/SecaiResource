@@ -28,6 +28,8 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -110,6 +112,8 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
             sftpUploader.createRemoteDirectory(sftpChannel, resultRemoteDir);
         }
 
+        Instant scriptStartTime = Instant.now();
+
         // 执行镜像相关sh脚本
         // 构造脚本路径
         String scriptPath = "/home/nfs/k8s/userData/" + modelMessage.getUserId() + "/" + modelMessage.getId() + "/modelData/imageOpe.sh";
@@ -118,12 +122,19 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
         sftpChannel.disconnect();
         session.disconnect();
 
+        Instant scriptEndTime = Instant.now();
+        long scriptDurationMs = Duration.between(scriptStartTime, scriptEndTime).toMillis();
+        // 输出到日志（关键信息）
+        log.info("镜像构建完成，耗时：{}ms", scriptDurationMs);
+
+
         // 修改表状态
         // 根据模型id获取到模型评测表的对应记录
         QueryWrapper<ModelEvaluation> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq("modelId", modelMessage.getId());
         ModelEvaluation modelEvaluation = modelEvaluationMapper.selectOne(queryWrapper);
         modelEvaluation.setStatus("评测中");
+        modelEvaluation.setCreateImageTime(scriptDurationMs);
         modelEvaluation.setUpdateTime(LocalDateTime.now());
         modelEvaluationMapper.updateById(modelEvaluation);
 

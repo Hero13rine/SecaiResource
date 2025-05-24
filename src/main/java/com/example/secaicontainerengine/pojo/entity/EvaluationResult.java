@@ -33,7 +33,7 @@ public class EvaluationResult implements Serializable {
 
     private String evaluateParameters;
 
-    private Long timeUse;
+    private String timeUse;
 
     /** CPU内存使用量 */
 

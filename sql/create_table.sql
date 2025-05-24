@@ -70,6 +70,7 @@ create table if not exists model_evaluation
    `userId` BIGINT NOT NULL COMMENT '用户ID',                -- 用户ID
    `modelScore` JSON COMMENT '模型评测类别得分（总得分，后门攻击，对抗攻击..）',
    `status` ENUM('待评测', '评测中', '成功', '失败') NOT NULL,
+   `createImageTime` BIGINT COMMENT '创建镜像花费时间',
    `createTime`         DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
    `updateTime`         DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
    `isDeleted`          TINYINT  DEFAULT 0 COMMENT '逻辑删除标志（0: 正常, 1: 已删除）'
@@ -103,7 +104,7 @@ CREATE TABLE IF NOT EXISTS evaluation_result (
    score DECIMAL(5, 2) COMMENT '评测得分',
    result JSON COMMENT '评测结果',
    status ENUM('待评测', '评测中', '成功', '失败') NOT NULL,
-   timeUse BIGINT COMMENT '评测时间',
+   timeUse TEXT COMMENT '评测时间',
    cpuMemoryUse BIGINT COMMENT 'CPU内存使用量',
    gpuMemoryUse BIGINT COMMENT 'GPU内存使用量',
    evaluateParameters JSON COMMENT '本次评测的参数（如fgsm的eps=0.4，用JSON存储）',

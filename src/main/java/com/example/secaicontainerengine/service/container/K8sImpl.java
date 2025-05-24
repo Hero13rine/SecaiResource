@@ -7,21 +7,27 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.secaicontainerengine.mapper.ContainerMapper;
 import com.example.secaicontainerengine.mapper.EvaluationMethodMapper;
 import com.example.secaicontainerengine.mapper.EvaluationResultMapper;
+import com.example.secaicontainerengine.mapper.ModelEvaluationMapper;
 import com.example.secaicontainerengine.pojo.dto.model.BusinessConfig;
+import com.example.secaicontainerengine.pojo.dto.model.EvaluationResultTimeUse;
 import com.example.secaicontainerengine.pojo.dto.model.ResourceConfig;
 import com.example.secaicontainerengine.pojo.entity.*;
 import com.example.secaicontainerengine.service.modelEvaluation.EvaluationResultService;
 import com.example.secaicontainerengine.service.modelEvaluation.ModelEvaluationService;
 import com.example.secaicontainerengine.util.PodUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import freemarker.template.TemplateException;
+import io.fabric8.kubernetes.api.model.ContainerStatus;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.Watcher;
 import io.fabric8.kubernetes.client.WatcherException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
@@ -99,7 +105,7 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     private EvaluationResultMapper evaluationResultMapper;
     @Lazy
     @Autowired
-    private ModelEvaluationService modelEvaluationService;
+    private ModelEvaluationMapper modelEvaluationMapper;
 
     @Value("${k8s.evaluation-resources.limits.gpu-memory}")
     private Integer evaluationGpuMemory;
@@ -218,11 +224,62 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     //监听接口1-持续监听指定的容器状态
     public void watchStatus(Long userId, Long modelId, String containerName) {
         final CountDownLatch closeLatch = new CountDownLatch(1);
+
+        // 新增：使用Map记录Pod关键状态的时间戳（避免重复记录）
+        Map<String, Instant> statusTimestamps = new ConcurrentHashMap<>();
+
         Watch watch = K8sClient.pods().inNamespace("default").withName(containerName).watch(new Watcher<Pod>() {
             @Override
             public void eventReceived(Action action, Pod pod) {
                 String phase = pod.getStatus().getPhase();
                 log.info("action: " + action +" phase：" + phase);
+
+                // ==== 1. 记录Pod创建时间（全局起始时间） ====
+                Instant creationTime = Instant.parse(pod.getMetadata().getCreationTimestamp());
+                statusTimestamps.putIfAbsent("creationTime", creationTime);
+
+                // ==== 2. 记录ContainerCreating开始时间（镜像拉取阶段） ====
+                if (phase.equals("Pending")) {
+                    // 获取容器状态列表（每个容器的详细状态）
+                    List<ContainerStatus> containerStatuses = pod.getStatus().getContainerStatuses();
+                    if (containerStatuses != null && !containerStatuses.isEmpty()) {
+                        for (ContainerStatus cs : containerStatuses) {
+                            // 检查容器是否处于等待状态（如创建中）
+                            if (cs.getState() != null && cs.getState().getWaiting() != null) {
+                                String waitingReason = cs.getState().getWaiting().getReason();
+                                if ("ContainerCreating".equals(waitingReason)) { // 直接匹配容器创建状态
+                                    statusTimestamps.putIfAbsent("containerCreatingStart", Instant.now());
+                                    log.info("容器 {} 进入创建状态（ContainerCreating），时间戳记录成功", cs.getName());
+                                    break; // 找到后退出，避免重复处理
+                                }
+                            }
+                        }
+                    }
+                }
+//                if (phase.equals("Pending")) {
+//                    statusTimestamps.putIfAbsent("containerCreatingStart", Instant.now());
+//                    log.info("Pod {} 进入ContainerCreating（镜像拉取开始）", containerName);
+//                }
+                // ==== 3. 记录Running时间（镜像拉取结束，执行开始） ====
+                if (phase.equals("Running") && !statusTimestamps.containsKey("runningTime")) {
+                    Instant runningTime = Instant.now();
+                    log.info("Pod {} 进入运行状态", containerName);
+                    statusTimestamps.put("runningStart", runningTime);
+                }
+
+                // ==== 4. 记录Succeeded时间（执行结束） ====
+                if (phase.equals("Succeeded") && !statusTimestamps.containsKey("succeededTime")) {
+                    Instant succeededTime = Instant.now();
+                    log.info("Pod {} 运行成功", containerName);
+                    statusTimestamps.put("succeededStart", succeededTime);
+                    // 将时间监控信息写入数据库
+                    try {
+                        recordPodTime(containerName, statusTimestamps);
+                    } catch (JsonProcessingException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+
 
                 Container container = Container.builder()
                         .containerName(containerName)
@@ -309,6 +366,57 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
 
     public List<String> getContainersByModelId(Long modelId) {
         return containerMapper.getContainerNameByModelId(modelId);
+    }
+
+    public void recordPodTime(String containerName, Map<String, Instant> statusTimestamps) throws JsonProcessingException {
+        Instant containerCreatingStart = statusTimestamps.get("containerCreatingStart");
+        Instant runningStart = statusTimestamps.get("runningStart");
+        Instant succeededStart = statusTimestamps.get("succeededStart");
+        Long createImageTime = 0L;
+        Long containerCreatingTime = 0L;
+        Long runningTime = 0L;
+        if (containerCreatingStart != null && runningStart != null) {
+            containerCreatingTime = Duration.between(containerCreatingStart, runningStart).toMillis();
+            log.info("Pod {} 拉取镜像耗时：{}ms", containerName, containerCreatingTime);
+        }
+        if(succeededStart != null){
+            runningTime = Duration.between(runningStart, succeededStart).toMillis();
+            log.info("Pod {} 执行耗时：{}ms", containerName, runningTime);
+        }
+        Long modelId = Long.parseLong(containerName.split("-")[1]);
+
+        String evaluateMethod = containerName.split("-")[2];
+        QueryWrapper<EvaluationMethod> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("methodName", evaluateMethod);
+        EvaluationMethod evaluationMethod = evaluationMethodMapper.selectOne(queryWrapper);
+        Long evaluationMethodId = evaluationMethod.getId();
+
+        if(modelId != null){
+            ModelEvaluation modelEvaluation = modelEvaluationMapper.selectOne(new LambdaQueryWrapper<ModelEvaluation>()
+                    .eq(ModelEvaluation::getModelId, modelId));
+            if(modelEvaluation != null){
+                createImageTime = modelEvaluation.getCreateImageTime();
+            }
+            Long totalTime = createImageTime + containerCreatingTime + runningTime;
+
+            EvaluationResultTimeUse evaluationResultTimeUse = EvaluationResultTimeUse.builder()
+                    .totalTime(totalTime)
+                    .createImageTime(createImageTime)
+                    .containerCreatingTime(containerCreatingTime)
+                    .runningTime(runningTime)
+                    .build();
+            ObjectMapper objectMapper = new ObjectMapper();
+            String timeUse = objectMapper.writeValueAsString(evaluationResultTimeUse);
+
+            LambdaQueryWrapper<EvaluationResult> queryWrapper2 = new LambdaQueryWrapper<>();
+            queryWrapper2.eq(EvaluationResult::getModelId, modelId)
+                    .eq(EvaluationResult::getEvaluateMethodId, evaluationMethodId);
+
+            EvaluationResult evaluationResult = evaluationResultMapper.selectOne(queryWrapper2);
+
+            evaluationResult.setTimeUse(timeUse);
+            evaluationResultMapper.updateById(evaluationResult);
+        }
     }
 
     @Override
