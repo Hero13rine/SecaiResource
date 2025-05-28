@@ -20,4 +20,6 @@ public interface ModelEvaluationService extends IService<ModelEvaluation> {
     void updateModelScores(Long modelId, Map<String, BigDecimal> typeScoreMap);
 
     void handleTimeout(Long methodId);
+
+    Long getCreateImageTimeByModelId(Long modelId);
 }

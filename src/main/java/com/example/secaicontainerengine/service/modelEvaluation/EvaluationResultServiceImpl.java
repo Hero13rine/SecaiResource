@@ -4,26 +4,20 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.secaicontainerengine.mapper.EvaluationResultMapper;
-import com.example.secaicontainerengine.pojo.dto.model.ModelScore;
 import com.example.secaicontainerengine.pojo.dto.result.PodResult;
 import com.example.secaicontainerengine.pojo.entity.EvaluationResult;
 import com.example.secaicontainerengine.pojo.entity.ModelEvaluation;
 import com.example.secaicontainerengine.pojo.vo.ModelEvaluation.GenerateReport;
-import com.example.secaicontainerengine.pojo.vo.ModelEvaluation.Report.Base.BaseEvaluation;
 import com.example.secaicontainerengine.pojo.vo.ModelEvaluation.Report.CleanAdv;
 import com.example.secaicontainerengine.pojo.vo.ModelEvaluation.Report.Robustness.*;
-import com.example.secaicontainerengine.pojo.vo.ModelEvaluation.Report.Robustness.Environment.Vision.TargetClass.EvtcMethodScore;
-import lombok.Generated;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.EnvironmentAware;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -269,5 +263,10 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
                 .robustnessEvaluation(robustnessEvaluation)
                 .build();
         return generateReport;
+    }
+
+    @Override
+    public List<Map<String, Object>> getEvaluationDetailByModelId(Long modelId) {
+        return evaluationResultMapper.getEvaluationDetailByModelId(modelId);
     }
 }

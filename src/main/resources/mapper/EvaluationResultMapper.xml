@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.secaicontainerengine.mapper.EvaluationResultMapper">
+
+    <select id="getEvaluationDetailByModelId" resultType="map">
+        SELECT
+            em.methodName as methodName,
+            er.timeUse as timeUse,
+            er.cpuMemoryUse as cpuMemoryUse,
+            er.gpuMemoryUse as gpuMemoryUse
+        FROM
+            evaluation_result er
+        JOIN
+            evaluation_method em ON er.evaluateMethodId=em.id
+        WHERE
+            er.modelId=#{modelId};
+    </select>
+
+</mapper>

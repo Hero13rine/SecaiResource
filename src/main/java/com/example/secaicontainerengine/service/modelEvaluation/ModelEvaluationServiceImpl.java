@@ -241,4 +241,8 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
         return podYamlFiles;
     }
 
+    @Override
+    public Long getCreateImageTimeByModelId(Long modelId) {
+        return modelEvaluationMapper.getCreateImageTimeByModelId(modelId);
+    }
 }

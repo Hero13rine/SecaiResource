@@ -54,6 +54,12 @@ public class ModelMessage implements Serializable {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updateTime;
 
+    // 文件上传耗费的总时间（单位：秒）
+    private Long uploadcostTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime uploadfinishedTime;
+
     @TableLogic
     private Integer isDeleted;
 

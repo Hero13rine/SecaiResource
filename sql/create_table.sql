@@ -58,6 +58,8 @@ create table if not exists model_message
     `status`             INT      DEFAULT 0 COMMENT '模型状态 0-文件上传中 1-文件上传成功 2-模型评测等待中 3-模型评测中 4-模型评测成功',
     `createTime`         DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updateTime`         DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `uploadCostTime`     BIGINT DEFAULT 0 COMMENT '文件上传耗费时间（单位：秒）',
+    `uploadFinishedTime` DATETIME DEFAULT NULL COMMENT '文件上传完成时间点',
     `isDeleted`          TINYINT  DEFAULT 0 COMMENT '逻辑删除标志（0: 正常, 1: 已删除）'
 ) comment '模型信息表' collate = utf8mb4_unicode_ci;
 

@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.io.Serial;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -13,7 +14,7 @@ import java.util.Map;
 @Data
 @Builder
 @TableName("model_evaluation")
-public class ModelEvaluation {
+public class ModelEvaluation implements Serializable {
 
     @TableId(type = IdType.AUTO)
     private Long id;

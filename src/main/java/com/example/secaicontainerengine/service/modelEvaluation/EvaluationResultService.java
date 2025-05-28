@@ -22,4 +22,6 @@ public interface EvaluationResultService extends IService<EvaluationResult> {
     GenerateReport getResultReport(Long modelId);
 
     GenerateReport calculateEvaluationReportData(List<EvaluationResult> resultList);
+
+    List<Map<String, Object>> getEvaluationDetailByModelId(Long modelId);
 }
