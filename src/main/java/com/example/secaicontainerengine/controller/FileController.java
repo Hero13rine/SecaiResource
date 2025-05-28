@@ -2,6 +2,7 @@ package com.example.secaicontainerengine.controller;
 
 
 import cn.hutool.core.io.FileUtil;
+import cn.hutool.crypto.Mode;
 import cn.hutool.json.JSONUtil;
 import com.example.secaicontainerengine.common.ErrorCode;
 import com.example.secaicontainerengine.config.SftpUploader;
@@ -32,6 +33,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -153,6 +155,7 @@ public class FileController {
         modelMessageService.save(modelMessage);
         Long modelId = modelMessage.getId();
 
+        long startTime=System.currentTimeMillis();
 
         // 使用线程处理文件保存和解压操作
         Future<?> firstTaskFuture = taskExecutor.submit(() -> {
@@ -229,6 +232,16 @@ public class FileController {
                         File.separator + modelId;
                 sftpUploader.uploadDirectory(loginUser.getId(), FileConstant.FILE_BASE_PATH + File.separator + fileUploadBizEnum.getValue() + File.separator + loginUser.getId(),
                         remoteDir, modelId);
+
+                long endTime=System.currentTimeMillis();
+                //文件上传耗费时间
+                long totalTime=endTime-startTime;
+
+                ModelMessage newModelMessage=new ModelMessage();
+                newModelMessage.setId(modelId);
+                newModelMessage.setUploadcostTime(totalTime/1000);
+                newModelMessage.setUploadfinishedTime(LocalDateTime.now());
+                modelMessageService.updateById(newModelMessage);
 
             } catch (Exception e) {
                 throw new RuntimeException(e);
