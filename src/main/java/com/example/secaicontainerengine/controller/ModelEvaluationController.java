@@ -1,15 +1,20 @@
 package com.example.secaicontainerengine.controller;
 
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.example.secaicontainerengine.common.BaseResponse;
 import com.example.secaicontainerengine.common.ResultUtils;
 import com.example.secaicontainerengine.exception.BusinessException;
 import com.example.secaicontainerengine.pojo.dto.model.ModelEvaluationRequest;
+import com.example.secaicontainerengine.pojo.entity.ModelEvaluation;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.example.secaicontainerengine.pojo.vo.ModelEvaluation.GenerateReport;
 import com.example.secaicontainerengine.service.modelEvaluation.EvaluationResultService;
 import com.example.secaicontainerengine.service.modelEvaluation.ModelEvaluationService;
 import com.example.secaicontainerengine.service.modelEvaluation.ModelMessageService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
@@ -24,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.concurrent.ExecutorService;
 
 import static com.example.secaicontainerengine.common.ErrorCode.SYSTEM_ERROR;
@@ -48,6 +54,8 @@ public class ModelEvaluationController {
     @Autowired
     private OkHttpClient okHttpClient;
 
+    @Autowired
+    private ObjectMapper objectMapper;
 
 
     @PostMapping("/start/{modelId}")
@@ -81,9 +89,17 @@ public class ModelEvaluationController {
     }
 
     @PostMapping("/result/{modelId}")
-    public GenerateReport getResultReport(@PathVariable Long modelId){
-        GenerateReport resultReport = evaluationResultService.getResultReport(modelId);
-        return resultReport;
+    public GenerateReport getResultReport(@PathVariable Long modelId) throws JsonProcessingException {
+//        GenerateReport resultReport = evaluationResultService.getResultReport(modelId);
+        ModelEvaluation result = modelEvaluationService.getOne(new LambdaUpdateWrapper<ModelEvaluation>()
+                .eq(ModelEvaluation::getModelId, modelId));
+        JsonNode root = objectMapper.readTree(result.getModelScore());
+        double totalEvaluate = root.has("totalEvaluate") ? root.get("totalEvaluate").asDouble() : 0.0;
+        log.info("评测总分：{}", totalEvaluate);
+        GenerateReport report = GenerateReport.builder()
+                .totalScore(BigDecimal.valueOf(totalEvaluate))
+                .build();
+        return report;
     }
 
     // 任务调度方式启动

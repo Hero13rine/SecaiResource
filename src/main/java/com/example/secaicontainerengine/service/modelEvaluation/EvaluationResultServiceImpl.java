@@ -5,13 +5,18 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.secaicontainerengine.mapper.EvaluationResultMapper;
 import com.example.secaicontainerengine.mapper.ModelEvaluationMapper;
+import com.example.secaicontainerengine.mapper.ModelMessageMapper;
+import com.example.secaicontainerengine.pojo.dto.model.ModelScore;
 import com.example.secaicontainerengine.pojo.dto.result.EvaluationStatus;
 import com.example.secaicontainerengine.pojo.dto.result.PodResult;
 import com.example.secaicontainerengine.pojo.entity.EvaluationResult;
 import com.example.secaicontainerengine.pojo.entity.ModelEvaluation;
+import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.example.secaicontainerengine.pojo.vo.ModelEvaluation.GenerateReport;
 import com.example.secaicontainerengine.pojo.vo.ModelEvaluation.Report.CleanAdv;
 import com.example.secaicontainerengine.pojo.vo.ModelEvaluation.Report.Robustness.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -31,6 +36,8 @@ import static com.example.secaicontainerengine.util.PodUtil.calculateScoreFromRe
 @Slf4j
 public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMapper, EvaluationResult> implements EvaluationResultService {
 
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Lazy
     @Autowired
@@ -45,30 +52,89 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
     @Autowired
     private ModelEvaluationMapper modelEvaluationMapper;
 
+    @Autowired
+    private ModelMessageMapper modelMessageMapper;
+
+    private static final List<String> RESULT = List.of("basicResult", "interpretabilityResult");
+
     @Override
     public void calculateAndUpdateScores(Long modelId) {
 
-        // 1.查询当前模型的所有评测记录（evaluation_result 表）
-        List<EvaluationResult> resultList = getEvaluationResultsByModelId(modelId);
-        if (resultList.isEmpty()) {
-            throw new RuntimeException("模型 ID=" + modelId + " 无评测记录，无法计算得分");
+//        // 1.查询当前模型的所有评测记录（evaluation_result 表）
+//        List<EvaluationResult> resultList = getEvaluationResultsByModelId(modelId);
+//        if (resultList.isEmpty()) {
+//            throw new RuntimeException("模型 ID=" + modelId + " 无评测记录，无法计算得分");
+//        }
+//
+//        // 2.根据评测输出计算得分
+//        updateEvaluationResultScore(resultList);
+//
+//        // 3.获取所有评测记录的 evaluateMethodId，并查询对应的分类（Type）（evaluation_method 表）
+//        // 键是评测方法id，值是评测方法Type类别
+//        Map<Long, String> evaluateMethodTypeMap = evaluationMethodService.getEvaluationMethodTypeMap(resultList);
+//
+//        // 4.按分类（Type）分组，计算每一类的得分(目前用平均值代替)
+//        // 键是Type类别，值是该类别的平均分
+//        Map<String, BigDecimal> typeScoreMap = calculateScoresByType(resultList, evaluateMethodTypeMap);
+//
+//        // 5.更新模型的分类得分（示例：更新到 model_message 表）
+//        modelEvaluationService.updateModelScores(modelId, typeScoreMap);
+
+        // 1.查询出每个评测维度的测试结果
+        Map<String, String> resultMap = modelEvaluationMapper.selectResults(modelId);
+        // 2.计算出每个维度的测试得分
+        Map<String, Double> scoreMap = new HashMap<>();
+        // 2.1计算基础得分
+        String basic = resultMap.get("basicResult");
+        if (isNotEmptyJson(basic)) {
+            scoreMap.put("basicResult", computeBasicScore(basic));
         }
+        // 2.2计算可解释性得分
+        String interpretability = resultMap.get("interpretabilityResult");
+        if (isNotEmptyJson(interpretability)) {
+            scoreMap.put("interpretabilityResult", computeInterpretabilityScore(interpretability));
+        }
+        // 2.3计算鲁棒性得分
+        String robustness = resultMap.get("robustnessResult");
+        if (isNotEmptyJson(robustness)) {
+            scoreMap.put("robustnessResult", computeRobustnessScore(robustness));
+        }
+        // 2.4计算泛化性得分
+        String generalization = resultMap.get("generalizationResult");
+        if (isNotEmptyJson(generalization)) {
+            scoreMap.put("generalizationResult", computeGeneralizationScore(robustness));
+        }
+        // 2.5计算公平性得分
+        String fairness = resultMap.get("fairnessResult");
+        if (isNotEmptyJson(fairness)) {
+            scoreMap.put("fairnessResult", computeFairnessScore(robustness));
+        }
+        // 2.6计算安全性得分
+        String security = resultMap.get("securityResult");
+        if (isNotEmptyJson(security)) {
+            scoreMap.put("securityResult", computeSecurityScore(robustness));
+        }
+        // 3.每个维度求平均计算出一个最终得分
+        log.info("每个指标得分：{}", scoreMap);
+        double finalScore = calculateFinalScore(scoreMap);
+        ModelScore modelScore = ModelScore.builder()
+                .totalEvaluate(BigDecimal.valueOf(finalScore))
+                .build();
 
-        // 2.根据评测输出计算得分
-        updateEvaluationResultScore(resultList);
+        // 4.修改评测状态
+        QueryWrapper<ModelEvaluation> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("modelId", modelId);
+        ModelEvaluation modelEvaluation = modelEvaluationMapper.selectOne(queryWrapper);
 
-        // 3.获取所有评测记录的 evaluateMethodId，并查询对应的分类（Type）（evaluation_method 表）
-        // 键是评测方法id，值是评测方法Type类别
-        Map<Long, String> evaluateMethodTypeMap = evaluationMethodService.getEvaluationMethodTypeMap(resultList);
+        modelEvaluation.setStatus("成功");
+        modelEvaluation.setModelScore(JSONUtil.toJsonStr(modelScore));
+        modelEvaluation.setUpdateTime(LocalDateTime.now());
+        modelEvaluationMapper.updateById(modelEvaluation);
 
-        // 4.按分类（Type）分组，计算每一类的得分(目前用平均值代替)
-        // 键是Type类别，值是该类别的平均分
-        Map<String, BigDecimal> typeScoreMap = calculateScoresByType(resultList, evaluateMethodTypeMap);
-
-        // 5.更新模型的分类得分（示例：更新到 model_message 表）
-        modelEvaluationService.updateModelScores(modelId, typeScoreMap);
-
-
+        ModelMessage modelMessage = modelMessageMapper.selectById(modelId);
+        modelMessage.setStatus(4);
+        modelMessage.setUpdateTime(LocalDateTime.now());
+        modelMessageMapper.updateById(modelMessage);
     }
 
     @Override
@@ -287,5 +353,75 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
     @Override
     public void updateStatus(EvaluationStatus evaluationStatus) {
         evaluationResultMapper.updateStatus(evaluationStatus);
+    }
+
+    private boolean isNotEmptyJson(String json) {
+        try {
+            JsonNode node = objectMapper.readTree(json);
+            return node != null && node.size() > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private double computeBasicScore(String result) {
+        if (result == null || result.trim().isEmpty() || "{}".equals(result.trim())) {
+            return 0.0;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(result);
+            String[] keys = { "accuracy", "precision", "recall", "f1score" };
+            double total = 0.0;
+            int count = 0;
+            for (String key : keys) {
+                if (root.has(key)) {
+                    try {
+                        double value = Double.parseDouble(root.get(key).asText());
+                        total += value;
+                        count++;
+                    } catch (NumberFormatException e) {
+                        System.err.println("字段 " + key + " 解析失败: " + e.getMessage());
+                    }
+                }
+            }
+            return count > 0 ? total / count : 0.0;
+        } catch (Exception e) {
+            System.err.println("JSON 解析失败: " + e.getMessage());
+            return 0.0;
+        }
+    }
+
+    private double computeInterpretabilityScore(String result) {
+        return 0.0;
+    }
+
+    private double computeRobustnessScore(String result) {
+        return 0.0;
+    }
+
+    private double computeSecurityScore(String result) {
+        return 0.0;
+    }
+
+    private double computeFairnessScore(String result) {
+        return 0.0;
+    }
+
+    private double computeGeneralizationScore(String result) {
+        return 0.0;
+    }
+
+    public static double calculateFinalScore(Map<String, Double> scoreMap) {
+        if (scoreMap == null || scoreMap.isEmpty()) return 0.0;
+        double total = 0.0;
+        int count = 0;
+        for (Map.Entry<String, Double> entry : scoreMap.entrySet()) {
+            double score = entry.getValue();
+            if (score > 0.0) {
+                total += score;
+                count++;
+            }
+        }
+        return count > 0 ? total / count : 0.0;
     }
 }

@@ -208,7 +208,7 @@ public class FileController {
                 BeanUtils.copyProperties(modelConfig, evaluationConfig);
                 evaluationConfig.setEvaluateMethods(businessConfig.getEvaluateMethods());
                 String configsPath = modelSavePath + "/" + "evaluationConfigs";
-                generateEvaluationYamlConfigs(configsPath,evaluationConfig);
+                generateEvaluationYamlConfigs(evaluationConfig,showBusinessConfig,configsPath);
 
 
                 log.info("文件处理完成");
