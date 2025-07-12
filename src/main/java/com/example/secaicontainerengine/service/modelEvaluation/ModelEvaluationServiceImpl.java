@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -80,9 +81,15 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
     @Override
     public void startEvaluationPod(ModelMessage modelMessage) throws Exception {
         // 根据不同的攻击类型来构造 Pod 的配置信息
-        List<String> podYamlFiles = JSONUtil.toBean(modelMessage.getBusinessConfig(), BusinessConfig.class).getEvaluateMethods();
+//        List<String> podYamlFiles = JSONUtil.toBean(modelMessage.getBusinessConfig(), BusinessConfig.class).getEvaluateMethods();
 
-        List streams = containerService.initNew(modelMessage, podYamlFiles);
+        // 获取要评测的维度
+        List<BusinessConfig.EvaluationDimensionConfig> evaluateMethods = JSONUtil.toBean(modelMessage.getBusinessConfig(), BusinessConfig.class).getEvaluateMethods();
+        List<String> dimensions = evaluateMethods.stream()
+                .map(BusinessConfig.EvaluationDimensionConfig::getDimension)
+                .collect(Collectors.toList());
+
+        List streams = containerService.initNew(modelMessage, dimensions);
 
         // 创建nfs远程目录
         SftpConnect sftpConnect = sftpUploader.connectNfs();
@@ -96,7 +103,7 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
         session.setConfig("ServerAliveCountMax", "5");   // 如果连续5次没有响应，则断开连接
 
         sftpChannel.connect();
-        for (String podYamlFile : podYamlFiles) {
+        for (String podYamlFile : dimensions) {
             String outputRemoteDir = nfsPath + File.separator + userData
                     + File.separator + modelMessage.getUserId()
                     + File.separator + modelMessage.getId()
@@ -155,7 +162,10 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
         ModelMessage modelMessage = modelMessageMapper.selectById(modelId);
         String businessConfigStr = modelMessage.getBusinessConfig();
         BusinessConfig businessConfig = JSONUtil.toBean(businessConfigStr, BusinessConfig.class);
-        return businessConfig.getEvaluateMethods();
+        return businessConfig.getEvaluateMethods()
+                .stream()
+                .map(BusinessConfig.EvaluationDimensionConfig::getDimension)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -232,7 +242,10 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
     public List<String> getPodYamlFile(BusinessConfig businessConfig) {
 
         List<String> podYamlFiles = new ArrayList<>();
-        List<String> evaluateMethods = businessConfig.getEvaluateMethods();
+        List<String> evaluateMethods = businessConfig.getEvaluateMethods()
+                .stream()
+                .map(BusinessConfig.EvaluationDimensionConfig::getDimension)
+                .toList();
         // 检查 evaluateMethods 是否为空或 null，若为空则抛出异常
         if (evaluateMethods == null || evaluateMethods.isEmpty()) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "没有选择任何攻击类型！");

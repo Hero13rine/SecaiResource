@@ -34,8 +34,6 @@ spec:
           value: default
         - name: evaluateDimension
           value: ${evaluateDimension}
-        - name: evaluateMetric
-          value: ${evaluateMetric}
         - name: resultUrl
           value: ${resultUrl}
         - name: resultColumn

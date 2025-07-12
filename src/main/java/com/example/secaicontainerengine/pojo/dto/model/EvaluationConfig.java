@@ -24,7 +24,7 @@ public class EvaluationConfig {
     private String task;
 
     // 模型评测方法
-    private List<String> evaluateMethods;
+    private List<BusinessConfig.EvaluationDimensionConfig> evaluateMethods;
 
 
 }

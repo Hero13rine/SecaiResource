@@ -165,8 +165,7 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
             values.put("gpuCoreLimits",gpuCoreLimits);
             values.put("gpuMemoryLimits",gpuMemoryLimits);
             values.put("gpuNumLimits",gpuNumLimits);
-            values.put("evaluateDimension", EvaluateDimensionConstant.getType(evaluationType));
-            values.put("evaluateMetric", evaluationType);
+            values.put("evaluateDimension", evaluationType);
             values.put("logUrl", logUrl);
             values.put("resultUrl", resultUrl);
             values.put("resultColumn", EvaluateDimensionConstant.getType(evaluationType)+"Result");
