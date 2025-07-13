@@ -15,6 +15,9 @@ spring:
     url: jdbc:mysql://10.195.34.44:3306/Sec_ruoyi
     username: root
     password: root
+#    url: jdbc:mysql://localhost:3306/Sec_ruoyi
+#    username: root
+#    password: 123456
 
 
 knife4j:
@@ -80,7 +83,7 @@ docker:
 
 #localhost中的ip，需要修改为自己启动服务的ip
 localhost:
-#  logUrl: http://10.195.34.44:8081/log
-#  resultUrl: http://10.195.34.44:8081/evaluate/result
-  logUrl: http://10.195.236.86:8081/log
-  resultUrl: http://10.195.236.86:8081/evaluate/result
+  logUrl: http://10.195.34.44:8081/log
+  resultUrl: http://10.195.34.44:8081/evaluate/result
+#  logUrl: http://10.195.236.86:8081/log
+#  resultUrl: http://10.195.236.86:8081/evaluate/result

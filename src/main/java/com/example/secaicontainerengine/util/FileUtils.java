@@ -2,6 +2,7 @@ package com.example.secaicontainerengine.util;
 
 import com.example.secaicontainerengine.common.ErrorCode;
 import com.example.secaicontainerengine.exception.BusinessException;
+import com.example.secaicontainerengine.pojo.dto.model.BusinessConfig;
 import com.example.secaicontainerengine.pojo.dto.model.Evaluation;
 import com.example.secaicontainerengine.pojo.dto.model.EvaluationConfig;
 import com.example.secaicontainerengine.pojo.dto.model.ShowBusinessConfig;
@@ -458,7 +459,7 @@ public class FileUtils {
 //        }
 //    }
 
-    public static void generateEvaluationYamlConfigs(EvaluationConfig evaluationConfig, ShowBusinessConfig businessConfig, String outputPath) throws IOException {
+    public static void generateEvaluationYamlConfigs(EvaluationConfig evaluationConfig, BusinessConfig businessConfig, String outputPath) throws IOException {
         // 构造 model 节点
         Map<String, Object> modelInstantiation = new HashMap<>();
         modelInstantiation.put("model_path", "/app/userData/modelData/model/" + evaluationConfig.getModelNetFileName());
@@ -485,17 +486,24 @@ public class FileUtils {
         // 构造 evaluation 节点
         Map<String, Object> evaluation = new LinkedHashMap<>();
 
+        // 初始化每个维度为空 Map
         List<String> dimensions = Arrays.asList("basic", "robustness", "interpretability", "security", "generalization", "fairness");
-        Map<String, List<String>> methodMapFromDB = new HashMap<>();
-        for (Evaluation em : businessConfig.getEvaluateMethods()) {
-            methodMapFromDB.put(em.getDimension(), em.getMetrics());
+        for (String dim : dimensions) {
+            evaluation.put(dim, new LinkedHashMap<>());
         }
 
-        for (String dimension : dimensions) {
-            Map<String, Object> dimensionConfig = new HashMap<>();
-            dimensionConfig.put("metrics", methodMapFromDB.getOrDefault(dimension, Collections.emptyList()));
-            dimensionConfig.put("methods", new ArrayList<>()); // 为空列表
-            evaluation.put(dimension, dimensionConfig);
+        for (BusinessConfig.EvaluationDimensionConfig dimensionConfig : businessConfig.getEvaluateMethods()) {
+            String dimension = dimensionConfig.getDimension();
+            List<BusinessConfig.MethodMetricPair> methodMetricPairs = dimensionConfig.getMethodMetricMap();
+            if (!dimensions.contains(dimension)) {
+                continue; // 忽略未定义的维度
+            }
+            Map<String, List<String>> methodMap = (Map<String, List<String>>) evaluation.get(dimension);
+            for (BusinessConfig.MethodMetricPair pair : methodMetricPairs) {
+                String method = pair.getMethod();
+                List<String> metrics = pair.getMetrics() != null ? pair.getMetrics() : new ArrayList<>();
+                methodMap.put(method, metrics);
+            }
         }
 
         // 合并最终结构
