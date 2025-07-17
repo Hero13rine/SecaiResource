@@ -3,8 +3,6 @@ package com.example.secaicontainerengine.service.modelEvaluation;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.example.secaicontainerengine.pojo.entity.ModelEvaluation;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
-import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -27,4 +25,6 @@ public interface ModelEvaluationService extends IService<ModelEvaluation> {
     String getJsonValue(String modelId, String evaluateDimension, String metric);
 
     String getResult(String modelId, String evaluateDimension);
+
+    String getScoreByModelId(String modelId);
 }

@@ -29,7 +29,7 @@ RUN mkdir -p /opt/conda/envs/${condaEnv} && \
 # 安装 mysql-connector-python
 #RUN conda run -n ai_sec_test pip install mysql-connector-python -i https://pypi.tuna.tsinghua.edu.cn/simple
 RUN echo "install mysql-connector-python"
-RUN conda run -n ${condaEnv} conda install pymysql
+RUN conda run -n ${condaEnv} pip install pymysql -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 安装shap和sklearn
 RUN echo "install shap==0.47.2 and scikit-learn==1.5.0"

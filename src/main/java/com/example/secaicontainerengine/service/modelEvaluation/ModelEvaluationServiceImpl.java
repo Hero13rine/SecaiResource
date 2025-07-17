@@ -9,7 +9,6 @@ import com.example.secaicontainerengine.exception.BusinessException;
 import com.example.secaicontainerengine.mapper.ModelEvaluationMapper;
 import com.example.secaicontainerengine.mapper.ModelMessageMapper;
 import com.example.secaicontainerengine.pojo.dto.model.BusinessConfig;
-import com.example.secaicontainerengine.pojo.dto.model.EvaluationConfig;
 import com.example.secaicontainerengine.pojo.dto.model.ModelScore;
 import com.example.secaicontainerengine.pojo.entity.ModelEvaluation;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
@@ -20,10 +19,8 @@ import com.jcraft.jsch.Session;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -33,7 +30,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -268,5 +264,10 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
     @Override
     public String getResult(String modelId, String evaluateDimension) {
         return modelEvaluationMapper.getResult(modelId, evaluateDimension);
+    }
+
+    @Override
+    public String getScoreByModelId(String modelId) {
+        return modelEvaluationMapper.getModelScoreByModelId(modelId);
     }
 }

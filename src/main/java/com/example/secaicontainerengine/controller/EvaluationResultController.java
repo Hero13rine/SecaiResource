@@ -5,6 +5,7 @@ import com.example.secaicontainerengine.pojo.dto.result.EvaluationRequest;
 import com.example.secaicontainerengine.pojo.dto.result.EvaluationStatus;
 import com.example.secaicontainerengine.service.modelEvaluation.EvaluationResultService;
 import com.example.secaicontainerengine.service.modelEvaluation.ModelEvaluationService;
+import com.example.secaicontainerengine.service.modelEvaluation.ModelMessageService;
 import com.jcraft.jsch.ChannelSftp;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.IOUtils;
@@ -16,6 +17,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -27,6 +30,9 @@ public class EvaluationResultController {
 
     @Autowired
     private ModelEvaluationService modelEvaluationService;
+
+    @Autowired
+    private ModelMessageService modelMessageService;
 
     @Autowired
     private SftpUploader sftpUploader;
@@ -77,4 +83,13 @@ public class EvaluationResultController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/dimensionAndscore")
+    public ResponseEntity<?> getResult(@RequestParam String modelId){
+        String businessConfig = modelMessageService.getBusinessConfigById(modelId);
+        String modelScore = modelEvaluationService.getScoreByModelId(modelId);
+        Map<String, String> map = new HashMap<>();
+        map.put("businessConfig", businessConfig);
+        map.put("modelScore", modelScore);
+        return ResponseEntity.ok(map);
+    }
 }

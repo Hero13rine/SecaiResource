@@ -9,4 +9,10 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 public class ModelMessageServiceImpl extends ServiceImpl<ModelMessageMapper, ModelMessage> implements ModelMessageService {
+
+    @Override
+    public String getBusinessConfigById(String modelId) {
+        ModelMessage modelMessage = getById(modelId);
+        return modelMessage.getBusinessConfig();
+    }
 }
