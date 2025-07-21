@@ -489,8 +489,115 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
         }
     }
 
-    private double computeFairnessScore(String result) {
-        return 0.0;
+    /**
+     * 根据公平性指标计算0-1之间的综合公平性分数
+     * @param result 包含公平性指标的JSON字符串
+     * @return 公平性分数，范围从0（最不公平）到1（完全公平）
+     */
+    public double computeFairnessScore(String result) {
+        if (result == null || result.trim().isEmpty() || "{}".equals(result.trim())) {
+            return 0.0;
+        }
+        
+        try {
+            JsonNode root = objectMapper.readTree(result);
+            double totalScore = 0.0;
+            int metricCount = 0;
+            
+            // 计算每个指标的公平性分数并累加
+            if (root.has("spd")) {
+                double spd = root.get("spd").asDouble();
+                totalScore += calculateSPDScore(spd);
+                metricCount++;
+            }
+            
+            if (root.has("dir")) {
+                double dir = root.get("dir").asDouble();
+                totalScore += calculateDIRScore(dir);
+                metricCount++;
+            }
+            
+            if (root.has("eod")) {
+                double eod = root.get("eod").asDouble();
+                totalScore += calculateEODScore(eod);
+                metricCount++;
+            }
+            
+            if (root.has("aod")) {
+                double aod = root.get("aod").asDouble();
+                totalScore += calculateAODScore(aod);
+                metricCount++;
+            }
+            
+            if (root.has("consistency")) {
+                double consistency = root.get("consistency").asDouble();
+                totalScore += consistency; // 一致性已经是0-1之间的分数
+                metricCount++;
+            }
+            
+            // 如果没有有效指标，返回0
+            return metricCount > 0 ? totalScore / metricCount : 0.0;
+            
+        } catch (Exception e) {
+            System.err.println("JSON解析失败: " + e.getMessage());
+            return 0.0;
+        }
+    }
+    
+    /**
+     * 计算统计 parity difference (SPD) 的公平性分数
+     * SPD越接近0越公平
+     */
+    private double calculateSPDScore(double spd) {
+        // 将SPD转换为0-1之间的分数，越接近0分数越高
+        double absSPD = Math.abs(spd);
+        // 假设SPD在[-0.5, 0.5]范围内，超过此范围的分数为0
+        return Math.max(0.0, 1.0 - (absSPD * 2));
+    }
+    
+    /**
+     * 计算 disparate impact ratio (DIR) 的公平性分数
+     * DIR越接近1越公平
+     */
+    private double calculateDIRScore(double dir) {
+        // DIR应该接近1，低于0.8或高于1.2被认为不公平
+        if (dir <= 0) {
+            return 0.0;
+        }
+        
+        double score;
+        if (dir >= 1) {
+            // DIR >=1 的情况
+            score = 1.0 / Math.max(1.0, dir);
+        } else {
+            // DIR <1 的情况
+            score = dir;
+        }
+        
+        // 将分数限制在0-1范围内
+        return Math.min(1.0, Math.max(0.0, score));
+    }
+    
+    /**
+     * 计算 equal opportunity difference (EOD) 的公平性分数
+     * EOD越接近0越公平
+     */
+    private double calculateEODScore(double eod) {
+        // 将EOD转换为0-1之间的分数，越接近0分数越高
+        double absEOD = Math.abs(eod);
+        // 假设EOD在[-0.5, 0.5]范围内，超过此范围的分数为0
+        return Math.max(0.0, 1.0 - (absEOD * 2));
+    }
+    
+    /**
+     * 计算 average odds difference (AOD) 的公平性分数
+     * AOD越接近0越公平
+     */
+    private double calculateAODScore(double aod) {
+        // 将AOD转换为0-1之间的分数，越接近0分数越高
+        double absAOD = Math.abs(aod);
+        // 假设AOD在[-0.5, 0.5]范围内，超过此范围的分数为0
+        return Math.max(0.0, 1.0 - (absAOD * 2));
     }
 
     private double computeGeneralizationScore(String result) {
