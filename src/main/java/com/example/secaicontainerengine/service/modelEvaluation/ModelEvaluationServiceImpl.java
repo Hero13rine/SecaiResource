@@ -120,7 +120,7 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
 
         // 执行镜像相关sh脚本
         // 构造脚本路径
-        String scriptPath = "/home/nfs/k8s/userData/" + modelMessage.getUserId() + "/" + modelMessage.getId() + "/modelData/imageOpe.sh";
+        String scriptPath = "/home/xd-1/k8s/userData/" + modelMessage.getUserId() + "/" + modelMessage.getId() + "/modelData/imageOpe.sh";
         sftpUploader.shRemoteScript(session, scriptPath);
 
         sftpChannel.disconnect();

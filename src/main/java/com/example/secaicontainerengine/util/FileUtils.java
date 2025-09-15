@@ -339,7 +339,7 @@ public class FileUtils {
         Long userId = modelMessage.getUserId();
         Long modelId = modelMessage.getId();
         String buildAndPushScript = "#!/bin/bash\n" +
-                "cd /home/nfs/k8s/userData/" + userId + "/" + modelId + "/modelData\n" +
+                "cd /home/xd-1/k8s/userData/" + userId + "/" + modelId + "/modelData\n" +
                 "echo \"正在制作镜像...\"\n" +
                 "sudo docker build --build-arg condaEnv=" + condaEnv + " -t " + modelId + ":latest .\n" +
                 "echo \"正在给镜像打标签...\"\n" +

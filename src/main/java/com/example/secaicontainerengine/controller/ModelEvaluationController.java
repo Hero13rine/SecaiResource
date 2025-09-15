@@ -123,7 +123,7 @@ public class ModelEvaluationController {
                 );
                 okhttp3.RequestBody body = okhttp3.RequestBody.create(job, MediaType.parse("application/json; charset=utf-8"));
                 Request request = new Request.Builder()
-                        .url("http://10.195.34.44:8080/monitor/job")
+                        .url("http://localhost:8080/monitor/job")
                         .post(body)
                         .addHeader("Content-Type", "application/json")
                         .build();
