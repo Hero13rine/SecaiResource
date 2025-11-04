@@ -143,7 +143,7 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
             String podName = modelMessage.getUserId() + "-" + modelMessage.getId() + "-" + evaluationType.toLowerCase();
             log.info("初始化接口：Pod的名称-" + podName);
             String imageName = registryHost + "/" + modelMessage.getId();
-
+            log.info("初始化接口：imageName的名称-" + imageName);
             ResourceConfig podResourceLimits = calculatePodResourceFromModel(modelMessage);
             String gpuCoreLimits = podResourceLimits.getGpuCoreRequired().toString();
             String gpuMemoryLimits = podResourceLimits.getGpuMemoryRequired().toString();
@@ -177,7 +177,7 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
             ByteArrayInputStream ymlStream = new ByteArrayInputStream(yamlContent.getBytes());
             streams.add(ymlStream);
 
-
+            log.info("初始化接口：streams构建完毕");
         }
         return streams;
     }

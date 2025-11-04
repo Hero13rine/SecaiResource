@@ -100,19 +100,19 @@ public class ModelEvaluationServiceImpl extends ServiceImpl<ModelEvaluationMappe
 
         sftpChannel.connect();
         for (String podYamlFile : dimensions) {
-            String outputRemoteDir = nfsPath + File.separator + userData
-                    + File.separator + modelMessage.getUserId()
-                    + File.separator + modelMessage.getId()
-                    + File.separator + evaluationData
-                    + File.separator + podYamlFile
-                    + File.separator + outputData;
+            String outputRemoteDir = nfsPath + "/" + userData
+                    + "/" + modelMessage.getUserId()
+                    + "/" + modelMessage.getId()
+                    + "/" + evaluationData
+                    + "/" + podYamlFile
+                    + "/" + outputData;
             sftpUploader.createRemoteDirectory(sftpChannel, outputRemoteDir);
-            String resultRemoteDir = nfsPath + File.separator + userData
-                    + File.separator + modelMessage.getUserId()
-                    + File.separator + modelMessage.getId()
-                    + File.separator + evaluationData
-                    + File.separator + podYamlFile
-                    + File.separator + resultData;
+            String resultRemoteDir = nfsPath + "/" + userData
+                    + "/" + modelMessage.getUserId()
+                    + "/" + modelMessage.getId()
+                    + "/" + evaluationData
+                    + "/" + podYamlFile
+                    + "/" + resultData;
             sftpUploader.createRemoteDirectory(sftpChannel, resultRemoteDir);
         }
 
