@@ -245,8 +245,8 @@ public class FileUtils {
                 "set -e\n\n" +
                 "# 定义临时文件路径（使用固定路径避免权限问题）\n" +
                 "TMP_MEM_FILE=\"/tmp/max_mem.tmp\"\n" +
-                "TMP_GPU_FILE=\"/tmp/max_gpu.tmp\"\n\n" +
-                "# 初始化临时文件（避免残留数据）\n" +
+//                "TMP_GPU_FILE=\"/tmp/max_gpu.tmp\"\n\n" +
+//                "# 初始化临时文件（避免残留数据）\n" +
                 "echo 0 > \"$TMP_MEM_FILE\"\n" +
                 "echo 0 > \"$TMP_GPU_FILE\"\n\n" +
                 "# 定义监控函数（后台运行，数据写入临时文件）\n" +
@@ -298,7 +298,7 @@ public class FileUtils {
                 "source activate " + condaEnv + "\n\n" +
                 "echo \"Running 模型评测...\"\n" +
                 "export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1\n" +
-                "python3 /app/systemData/evaluation_code/art/eva_start.py &\n" +
+                "python3 /app/systemData/evaluation_code/secai-common/eva_start.py &\n" +
                 "python_pid=$!  # 获取Python进程PID\n\n" +
                 "# 等待Python进程完成（精准等待，避免阻塞）\n" +
                 "wait $python_pid  # 仅等待Python进程\n" +
