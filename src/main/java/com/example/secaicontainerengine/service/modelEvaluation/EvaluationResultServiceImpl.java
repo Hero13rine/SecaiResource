@@ -414,7 +414,7 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
                 // precision: 精确率
                 // recall: 召回率
                 // per_class_ap: 每个类别的平均精度（字典格式，需要特殊处理）
-                keys = new String[]{"map", "map_50", "precision", "recall", "per_class_ap"};
+                keys = new String[]{"map5095", "map50", "precision", "recall", "per_class_ap"};
                 log.debug("使用目标检测指标计算basic得分");
             } else {
                 // 分类任务（默认）：4个指标
