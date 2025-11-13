@@ -3,15 +3,16 @@ package com.example.secaicontainerengine.util;
 import com.example.secaicontainerengine.common.ErrorCode;
 import com.example.secaicontainerengine.exception.BusinessException;
 import com.example.secaicontainerengine.pojo.dto.model.BusinessConfig;
-import com.example.secaicontainerengine.pojo.dto.model.Evaluation;
 import com.example.secaicontainerengine.pojo.dto.model.EvaluationConfig;
-import com.example.secaicontainerengine.pojo.dto.model.ShowBusinessConfig;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.SftpException;
 import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.nodes.Node;
+import org.yaml.snakeyaml.nodes.Tag;
+import org.yaml.snakeyaml.representer.Representer;
 
 import java.io.*;
 import java.nio.file.DirectoryStream;
@@ -245,8 +246,8 @@ public class FileUtils {
                 "set -e\n\n" +
                 "# 定义临时文件路径（使用固定路径避免权限问题）\n" +
                 "TMP_MEM_FILE=\"/tmp/max_mem.tmp\"\n" +
-//                "TMP_GPU_FILE=\"/tmp/max_gpu.tmp\"\n\n" +
-//                "# 初始化临时文件（避免残留数据）\n" +
+                "TMP_GPU_FILE=\"/tmp/max_gpu.tmp\"\n\n" +
+                "# 初始化临时文件（避免残留数据）\n" +
                 "echo 0 > \"$TMP_MEM_FILE\"\n" +
                 "echo 0 > \"$TMP_GPU_FILE\"\n\n" +
                 "# 定义监控函数（后台运行，数据写入临时文件）\n" +
@@ -298,7 +299,7 @@ public class FileUtils {
                 "source activate " + condaEnv + "\n\n" +
                 "echo \"Running 模型评测...\"\n" +
                 "export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1\n" +
-                "python3 /app/systemData/evaluation_code/secai-common/eva_start.py &\n" +
+                "python3 /app/systemData/evaluation_code/art/eva_start.py &\n" +
                 "python_pid=$!  # 获取Python进程PID\n\n" +
                 "# 等待Python进程完成（精准等待，避免阻塞）\n" +
                 "wait $python_pid  # 仅等待Python进程\n" +
@@ -460,79 +461,10 @@ public class FileUtils {
 //    }
 
     public static void generateEvaluationYamlConfigs(EvaluationConfig evaluationConfig, BusinessConfig businessConfig, String outputPath) throws IOException {
-        // 构造 model 节点
-        Map<String, Object> modelInstantiation = new HashMap<>();
-        modelInstantiation.put("model_path", "/app/userData/modelData/model/" + evaluationConfig.getModelNetFileName());
-        modelInstantiation.put("weight_path", "/app/userData/modelData/" + evaluationConfig.getWeightFileName());
-        modelInstantiation.put("model_name", evaluationConfig.getModelNetName());
-        modelInstantiation.put("parameters", new HashMap<>()); // 空参数
-
-        Map<String, Object> modelEstimator = new HashMap<>();
-        modelEstimator.put("framework", evaluationConfig.getFramework());
-        modelEstimator.put("task", evaluationConfig.getTask());
-
-        Map<String, Object> estimatorParams = new HashMap<>();
-//        estimatorParams.put("input_shape", Arrays.asList(3, 32, 32));
-//        estimatorParams.put("nb_classes", 10);
-        // 输入数据形状：优先使用传入的参数，如果为空则使用默认值 [3, 32, 32]
-        List<Integer> inputShape;
-        if (evaluationConfig.getInputChannels() != null
-                && evaluationConfig.getInputHeight() != null
-                && evaluationConfig.getInputWidth() != null) {
-            inputShape = Arrays.asList(
-                    evaluationConfig.getInputChannels(),
-                    evaluationConfig.getInputHeight(),
-                    evaluationConfig.getInputWidth()
-            );
-        } else {
-            // 向后兼容：如果参数为空，使用默认值
-            inputShape = Arrays.asList(3, 32, 32);
-        }
-        estimatorParams.put("input_shape", inputShape);
-
-        // 类别数目：优先使用传入的参数，如果为空则使用默认值 10
-        Integer nbClasses = evaluationConfig.getNbClasses() != null
-                ? evaluationConfig.getNbClasses()
-                : 10; // 向后兼容：默认值
-        estimatorParams.put("nb_classes", nbClasses);
-        estimatorParams.put("clip_values", Arrays.asList(0, 1));
-        estimatorParams.put("device", "cuda");
-        estimatorParams.put("device_type", "gpu");
-        modelEstimator.put("parameters", estimatorParams);
-
-        Map<String, Object> modelConfig = new HashMap<>();
-        modelConfig.put("instantiation", modelInstantiation);
-        modelConfig.put("estimator", modelEstimator);
-
-        // 构造 evaluation 节点
-        Map<String, Object> evaluation = new LinkedHashMap<>();
-
-        // 初始化每个维度为空 Map
-        List<String> dimensions = Arrays.asList("basic", "robustness", "interpretability", "safety", "generalization", "fairness");
-        for (String dim : dimensions) {
-            evaluation.put(dim, new LinkedHashMap<>());
-        }
-
-        for (BusinessConfig.EvaluationDimensionConfig dimensionConfig : businessConfig.getEvaluateMethods()) {
-            String dimension = dimensionConfig.getDimension();
-            List<BusinessConfig.MethodMetricPair> methodMetricPairs = dimensionConfig.getMethodMetricMap();
-            if (!dimensions.contains(dimension)) {
-                continue; // 忽略未定义的维度
-            }
-            Map<String, List<String>> methodMap = (Map<String, List<String>>) evaluation.get(dimension);
-            for (BusinessConfig.MethodMetricPair pair : methodMetricPairs) {
-                String method = pair.getMethod();
-                List<String> metrics = pair.getMetrics() != null ? pair.getMetrics() : new ArrayList<>();
-                methodMap.put(method, metrics);
-            }
-        }
-
-        // 合并最终结构
         Map<String, Object> root = new LinkedHashMap<>();
-        root.put("model", modelConfig);
-        root.put("evaluation", evaluation);
+        root.put("model", buildModelSection(evaluationConfig));
+        root.put("evaluation", buildEvaluationSection(businessConfig));
 
-        // 输出 evaluationConfig.yaml
         File outputFile = new File(outputPath, "evaluationConfig.yaml");
         if (!outputFile.getParentFile().exists() && !outputFile.getParentFile().mkdirs()) {
             throw new IOException("无法创建输出目录：" + outputPath);
@@ -541,8 +473,186 @@ public class FileUtils {
         try (FileWriter writer = new FileWriter(outputFile)) {
             DumperOptions dumperOptions = new DumperOptions();
             dumperOptions.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
-            Yaml yaml = new Yaml(dumperOptions);
+            dumperOptions.setPrettyFlow(false);
+            dumperOptions.setIndent(2);
+            Representer representer = new Representer(dumperOptions) {
+                @Override
+                protected Node representSequence(Tag tag, Iterable<?> sequence, DumperOptions.FlowStyle flowStyle) {
+                    if (sequence instanceof FlowSequence) {
+                        flowStyle = DumperOptions.FlowStyle.FLOW;
+                    }
+                    return super.representSequence(tag, sequence, flowStyle);
+                }
+            };
+            Yaml yaml = new Yaml(representer, dumperOptions);
             yaml.dump(root, writer);
+        }
+    }
+
+    private static final List<String> EVALUATION_DIMENSIONS = Arrays.asList(
+            "basic", "robustness", "interpretability", "safety", "generalization", "fairness"
+    );
+
+    private static final Map<String, List<String>> DEFAULT_DIMENSION_METHODS = new LinkedHashMap<>();
+
+    static {
+        DEFAULT_DIMENSION_METHODS.put("basic", Collections.singletonList("performance_testing"));
+        DEFAULT_DIMENSION_METHODS.put("robustness", Arrays.asList("adversarial", "corruption"));
+        DEFAULT_DIMENSION_METHODS.put("interpretability", Collections.singletonList("interpretability_testing"));
+        DEFAULT_DIMENSION_METHODS.put("safety", Collections.singletonList("membership_inference"));
+        DEFAULT_DIMENSION_METHODS.put("generalization", Collections.singletonList("generalization_testing"));
+        DEFAULT_DIMENSION_METHODS.put("fairness", Arrays.asList("group_fairness", "individual_fairness"));
+    }
+
+    private static Map<String, Object> buildModelSection(EvaluationConfig evaluationConfig) {
+        Map<String, Object> instantiation = new LinkedHashMap<>();
+        instantiation.put("model_path",
+                buildPath("/app/userData/modelData/model/", evaluationConfig.getModelNetFileName()));
+        instantiation.put("weight_path",
+                buildPath("/app/userData/modelData/", evaluationConfig.getWeightFileName()));
+        instantiation.put("model_name", evaluationConfig.getModelNetName());
+        instantiation.put("parameters", new LinkedHashMap<String, Object>());
+
+        Map<String, Object> estimatorParams = new LinkedHashMap<>();
+        estimatorParams.put("input_shape", buildInputShape(evaluationConfig));
+        if (!"detection".equalsIgnoreCase(evaluationConfig.getTask())) {
+            estimatorParams.put("nb_classes",
+                    evaluationConfig.getNbClasses() != null ? evaluationConfig.getNbClasses() : 10);
+        } else if (evaluationConfig.getNbClasses() != null) {
+            estimatorParams.put("nb_classes", evaluationConfig.getNbClasses());
+        }
+        estimatorParams.put("clip_values", flowSequence(Arrays.asList(0, 1)));
+        estimatorParams.put("device", "cuda");
+        estimatorParams.put("device_type", "gpu");
+
+        Map<String, Object> estimator = new LinkedHashMap<>();
+        estimator.put("framework", evaluationConfig.getFramework());
+        estimator.put("task", evaluationConfig.getTask());
+        estimator.put("parameters", estimatorParams);
+
+        Map<String, Object> model = new LinkedHashMap<>();
+        model.put("instantiation", instantiation);
+        model.put("estimator", estimator);
+        return model;
+    }
+
+    private static FlowSequence<Integer> buildInputShape(EvaluationConfig evaluationConfig) {
+        Integer channels = evaluationConfig.getInputChannels();
+        Integer height = evaluationConfig.getInputHeight();
+        Integer width = evaluationConfig.getInputWidth();
+        if (channels != null && height != null && width != null) {
+            return flowSequence(Arrays.asList(channels, height, width));
+        }
+        return flowSequence(Arrays.asList(3, 32, 32));
+    }
+
+    private static String buildPath(String prefix, String fileName) {
+        if (fileName == null || fileName.trim().isEmpty()) {
+            return prefix;
+        }
+        return prefix + fileName;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> buildEvaluationSection(BusinessConfig businessConfig) {
+        Map<String, Object> evaluation = initDefaultEvaluationStructure();
+        if (businessConfig == null || businessConfig.getEvaluateMethods() == null) {
+            return evaluation;
+        }
+
+        for (BusinessConfig.EvaluationDimensionConfig dimensionConfig : businessConfig.getEvaluateMethods()) {
+            if (dimensionConfig == null) {
+                continue;
+            }
+            String dimension = dimensionConfig.getDimension();
+            if (!EVALUATION_DIMENSIONS.contains(dimension)) {
+                continue;
+            }
+            Map<String, Object> methodContainer = (Map<String, Object>) evaluation.get(dimension);
+            List<BusinessConfig.MethodMetricPair> methodMetricPairs = dimensionConfig.getMethodMetricMap();
+            if (methodMetricPairs == null) {
+                continue;
+            }
+            for (BusinessConfig.MethodMetricPair pair : methodMetricPairs) {
+                if (pair == null || pair.getMethod() == null || pair.getMethod().trim().isEmpty()) {
+                    continue;
+                }
+                methodContainer.put(pair.getMethod(), buildMethodNode(pair.getMethod(), pair.getMetrics()));
+            }
+        }
+        return evaluation;
+    }
+
+    private static Map<String, Object> initDefaultEvaluationStructure() {
+        Map<String, Object> evaluation = new LinkedHashMap<>();
+        for (String dimension : EVALUATION_DIMENSIONS) {
+            Map<String, Object> methods = new LinkedHashMap<>();
+            List<String> defaults = DEFAULT_DIMENSION_METHODS.get(dimension);
+            if (defaults != null) {
+                for (String method : defaults) {
+                    methods.put(method, buildMethodNode(method, null));
+                }
+            }
+            evaluation.put(dimension, methods);
+        }
+        return evaluation;
+    }
+
+    private static Map<String, Object> buildMethodNode(String method, List<String> metrics) {
+        Map<String, Object> methodNode = new LinkedHashMap<>();
+        methodNode.put("metrics", metrics != null ? new ArrayList<>(metrics) : defaultMetricsPlaceholder());
+        switch (method) {
+            case "performance_testing":
+                methodNode.put("performance_testing_config", defaultPlaceholderList());
+                break;
+            case "adversarial":
+                Map<String, Object> attacks = new LinkedHashMap<>();
+                attacks.put("fgsm", defaultAttackConfig());
+                attacks.put("pgd", defaultAttackConfig());
+                methodNode.put("attacks", attacks);
+                break;
+            case "corruption":
+                methodNode.put("corruption_config", defaultPlaceholderList());
+                break;
+            case "group_fairness":
+            case "individual_fairness":
+            case "interpretability_testing":
+            case "membership_inference":
+            case "generalization_testing":
+                break;
+            case "coco_eval":
+                // coco_eval 暂无额外配置
+                break;
+            default:
+                break;
+        }
+        return methodNode;
+    }
+
+    private static Map<String, Object> defaultAttackConfig() {
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("eps", 0.03);
+
+        Map<String, Object> attack = new LinkedHashMap<>();
+        attack.put("parameters", parameters);
+        return attack;
+    }
+
+    private static List<String> defaultMetricsPlaceholder() {
+        return new ArrayList<>(Collections.singletonList(""));
+    }
+
+    private static List<String> defaultPlaceholderList() {
+        return new ArrayList<>(Collections.singletonList(""));
+    }
+
+    private static <T> FlowSequence<T> flowSequence(Collection<? extends T> source) {
+        return new FlowSequence<>(source);
+    }
+
+    private static final class FlowSequence<T> extends ArrayList<T> {
+        FlowSequence(Collection<? extends T> source) {
+            super(source);
         }
     }
 }
