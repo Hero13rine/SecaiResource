@@ -370,8 +370,113 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
     @Override
     @Transactional
     public void updateResult(Long modelId, Map<String, String> result, String resultColumn) {
+        // 特殊处理 robustness 维度：展开存储
+        if ("robustnessResult".equals(resultColumn) && result.containsKey("robustness")) {
+            parseAndStoreRobustness(modelId, resultColumn, result.get("robustness"));
+            return;
+        }
+
+        // 其他维度正常存储
         for (Map.Entry<String, String> entry : result.entrySet()) {
             modelEvaluationMapper.upsertJsonField(modelId, resultColumn, entry.getKey(), entry.getValue());
+        }
+    }
+
+    /**
+     * 解析并存储 robustness 的特殊JSON格式
+     * 将每个指标展开为独立的键值对，与其他维度格式保持一致
+     *
+     * 输入格式: "{\"adversarial\": [{...}, {...}], \"corruption\": [{...}, {...}]}"
+     * 存储后格式: {"map_drop_rate_fgsm_0.001": "0.062", "miss_rate_fgsm_0.001": "0.250", ...}
+     *
+     * @param modelId 模型ID
+     * @param resultColumn 结果列名（robustnessResult）
+     * @param robustnessJson robustness 字段的JSON字符串
+     */
+    private void parseAndStoreRobustness(Long modelId, String resultColumn, String robustnessJson) {
+        try {
+            // 解析内层JSON字符串
+            JsonNode rootNode = objectMapper.readTree(robustnessJson);
+            log.debug("开始解析并展开 robustness JSON");
+
+            int totalFields = 0;
+
+            // 处理 adversarial 数组：展开每个攻击的指标
+            if (rootNode.has("adversarial") && rootNode.get("adversarial").isArray()) {
+                JsonNode adversarialArray = rootNode.get("adversarial");
+                for (JsonNode attack : adversarialArray) {
+                    // 获取攻击名称作为后缀
+                    String attackName = attack.has("attack_name") ? attack.get("attack_name").asText() : "unknown";
+
+                    // 展开每个指标
+                    Iterator<Map.Entry<String, JsonNode>> fields = attack.fields();
+                    while (fields.hasNext()) {
+                        Map.Entry<String, JsonNode> field = fields.next();
+                        String fieldName = field.getKey();
+
+                        // 跳过 attack_name 本身
+                        if ("attack_name".equals(fieldName)) {
+                            continue;
+                        }
+
+                        // 构造键名：指标名_攻击名
+                        // 例如：map_drop_rate_fgsm_eps_0.001
+                        String key = fieldName + "_" + attackName;
+                        String value = field.getValue().asText();
+
+                        modelEvaluationMapper.upsertJsonField(modelId, resultColumn, key, value);
+                        totalFields++;
+                    }
+                }
+                log.debug("已展开存储 {} 个 adversarial 指标", totalFields);
+            }
+
+            // 处理 corruption 数组：展开每个腐败测试的指标
+            if (rootNode.has("corruption") && rootNode.get("corruption").isArray()) {
+                JsonNode corruptionArray = rootNode.get("corruption");
+                int corruptionFields = 0;
+
+                for (JsonNode corruption : corruptionArray) {
+                    // 获取腐败类型和严重程度作为后缀
+                    String corruptionName = corruption.has("corruption_name") ?
+                        corruption.get("corruption_name").asText() : "unknown";
+                    String severity = corruption.has("severity") ?
+                        corruption.get("severity").asText() : "";
+                    String suffix = corruptionName + (severity.isEmpty() ? "" : "_" + severity);
+
+                    // 展开每个指标
+                    Iterator<Map.Entry<String, JsonNode>> fields = corruption.fields();
+                    while (fields.hasNext()) {
+                        Map.Entry<String, JsonNode> field = fields.next();
+                        String fieldName = field.getKey();
+
+                        // 跳过用于构造后缀的字段
+                        if ("corruption_name".equals(fieldName) ||
+                            "corruption_key".equals(fieldName) ||
+                            "severity".equals(fieldName)) {
+                            continue;
+                        }
+
+                        // 构造键名：指标名_腐败类型_严重程度
+                        // 例如：performance_drop_rate_gaussian_noise_1
+                        String key = fieldName + "_" + suffix;
+                        String value = field.getValue().asText();
+
+                        modelEvaluationMapper.upsertJsonField(modelId, resultColumn, key, value);
+                        corruptionFields++;
+                    }
+                }
+                log.debug("已展开存储 {} 个 corruption 指标", corruptionFields);
+                totalFields += corruptionFields;
+            }
+
+            log.info("robustness JSON 解析并展开存储成功，共 {} 个指标字段", totalFields);
+
+        } catch (Exception e) {
+            log.error("解析并存储 robustness JSON 失败: {}", e.getMessage(), e);
+            // 解析失败时，尝试原样存储
+            modelEvaluationMapper.upsertJsonField(modelId, resultColumn, "robustness", robustnessJson);
+            log.warn("使用原格式存储 robustness");
         }
     }
 
@@ -539,28 +644,94 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
         try {
             JsonNode root = objectMapper.readTree(result);
 
-            // 处理可能的"robustness"包裹层（评测模块发送的格式）
-            // 数据库可能存储为：{"robustness": "{\"adversarial\": [...]}"}
+            // 处理新格式：{"adversarial": "[...]", "corruption": "[...]"}
+            // adversarial 和 corruption 的值可能是字符串形式的JSON数组，需要二次解析
+            if (root.has("adversarial") || root.has("corruption")) {
+                JsonNode adversarialNode = root.get("adversarial");
+                JsonNode corruptionNode = root.get("corruption");
+
+                // 如果 adversarial 或 corruption 是字符串类型，需要二次解析
+                if ((adversarialNode != null && adversarialNode.isTextual()) ||
+                    (corruptionNode != null && corruptionNode.isTextual())) {
+                    log.debug("检测到字符串格式的 adversarial/corruption，进行二次解析");
+                    root = parseRobustnessFields(root);
+                }
+
+                // 根据任务类型选择解析方式
+                if ("detection".equals(task)) {
+                    log.debug("使用目标检测任务的鲁棒性评测指标");
+                    return computeDetectionRobustnessScore(root);
+                } else {
+                    log.debug("使用分类任务的鲁棒性评测指标");
+                    return computeClassificationRobustnessScore(root);
+                }
+            }
+
+            // 处理旧格式：{"robustness": "{\"adversarial\": [...]}"}（兼容性处理）
             if (root.has("robustness") && root.get("robustness").isTextual()) {
                 String innerJson = root.get("robustness").asText();
                 root = objectMapper.readTree(innerJson);
-                log.debug("检测到robustness包裹层，已解析内层JSON");
+                log.debug("检测到旧的robustness包裹层格式，已解析内层JSON");
+
+                if ("detection".equals(task) && (root.has("adversarial") || root.has("corruption"))) {
+                    log.debug("使用目标检测任务的鲁棒性评测指标");
+                    return computeDetectionRobustnessScore(root);
+                }
             }
 
-            // 根据任务类型和JSON格式选择解析方式
-            if ("detection".equals(task) && (root.has("adversarial") || root.has("corruption"))) {
-                // 目标检测任务：解析图像鲁棒性结果（包含 adversarial 和 corruption 数组）
-                log.debug("使用目标检测任务的鲁棒性评测指标");
-                return computeDetectionRobustnessScore(root);
-            } else {
-                // 分类任务或旧格式：使用传统指标
-                log.debug("使用分类任务的鲁棒性评测指标");
-                return computeClassificationRobustnessScore(root);
-            }
+            // 分类任务或传统格式
+            log.debug("使用分类任务的鲁棒性评测指标");
+            return computeClassificationRobustnessScore(root);
+
         } catch (Exception e) {
             log.error("鲁棒性得分计算失败: {}", e.getMessage(), e);
             return 0.0;
         }
+    }
+
+    /**
+     * 解析字符串形式的 adversarial 和 corruption 字段
+     * 将 {"adversarial": "[...]", "corruption": "[...]"} 转换为
+     *    {"adversarial": [...], "corruption": [...]}
+     *
+     * @param root 原始JsonNode
+     * @return 解析后的JsonNode
+     */
+    private JsonNode parseRobustnessFields(JsonNode root) throws Exception {
+        Map<String, Object> parsedMap = new HashMap<>();
+
+        // 解析 adversarial 字段
+        if (root.has("adversarial")) {
+            JsonNode adversarialNode = root.get("adversarial");
+            if (adversarialNode.isTextual()) {
+                // 字符串类型，需要解析
+                String adversarialJson = adversarialNode.asText();
+                JsonNode parsedAdversarial = objectMapper.readTree(adversarialJson);
+                parsedMap.put("adversarial", parsedAdversarial);
+                log.debug("已解析 adversarial 字符串为数组");
+            } else {
+                // 已经是数组类型，直接使用
+                parsedMap.put("adversarial", adversarialNode);
+            }
+        }
+
+        // 解析 corruption 字段
+        if (root.has("corruption")) {
+            JsonNode corruptionNode = root.get("corruption");
+            if (corruptionNode.isTextual()) {
+                // 字符串类型，需要解析
+                String corruptionJson = corruptionNode.asText();
+                JsonNode parsedCorruption = objectMapper.readTree(corruptionJson);
+                parsedMap.put("corruption", parsedCorruption);
+                log.debug("已解析 corruption 字符串为数组");
+            } else {
+                // 已经是数组类型，直接使用
+                parsedMap.put("corruption", corruptionNode);
+            }
+        }
+
+        // 将Map转换回JsonNode
+        return objectMapper.valueToTree(parsedMap);
     }
 
     /**
