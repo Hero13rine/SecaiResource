@@ -27,11 +27,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.example.secaicontainerengine.util.PodUtil.calculateScoreFromResult;
 
@@ -404,18 +407,27 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
             // 处理 adversarial 数组：展开每个攻击的指标
             if (rootNode.has("adversarial") && rootNode.get("adversarial").isArray()) {
                 JsonNode adversarialArray = rootNode.get("adversarial");
+                // 定义需要存储的对抗攻击指标字段（只存储评测结果，不存储配置参数）
+                Set<String> adversarialMetrics = new HashSet<>(Arrays.asList(
+                    "map_drop_rate", "miss_rate", "false_detection_rate"
+                ));
+
                 for (JsonNode attack : adversarialArray) {
                     // 获取攻击名称作为后缀
-                    String attackName = attack.has("attack_name") ? attack.get("attack_name").asText() : "unknown";
+                    if (!attack.has("attack_name")) {
+                        log.warn("adversarial 攻击缺少 attack_name 字段，跳过");
+                        continue;
+                    }
+                    String attackName = attack.get("attack_name").asText();
 
-                    // 展开每个指标
+                    // 只展开真正的评测指标，跳过配置参数
                     Iterator<Map.Entry<String, JsonNode>> fields = attack.fields();
                     while (fields.hasNext()) {
                         Map.Entry<String, JsonNode> field = fields.next();
                         String fieldName = field.getKey();
 
-                        // 跳过 attack_name 本身
-                        if ("attack_name".equals(fieldName)) {
+                        // 只存储预定义的指标字段
+                        if (!adversarialMetrics.contains(fieldName)) {
                             continue;
                         }
 
@@ -436,24 +448,30 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
                 JsonNode corruptionArray = rootNode.get("corruption");
                 int corruptionFields = 0;
 
+                // 定义需要存储的corruption指标字段（只存储评测结果，不存储配置参数）
+                Set<String> corruptionMetrics = new HashSet<>(Arrays.asList(
+                    "perturbation_magnitude", "performance_drop_rate", "perturbation_tolerance"
+                ));
+
                 for (JsonNode corruption : corruptionArray) {
                     // 获取腐败类型和严重程度作为后缀
-                    String corruptionName = corruption.has("corruption_name") ?
-                        corruption.get("corruption_name").asText() : "unknown";
+                    if (!corruption.has("corruption_name")) {
+                        log.warn("corruption 测试缺少 corruption_name 字段，跳过");
+                        continue;
+                    }
+                    String corruptionName = corruption.get("corruption_name").asText();
                     String severity = corruption.has("severity") ?
                         corruption.get("severity").asText() : "";
                     String suffix = corruptionName + (severity.isEmpty() ? "" : "_" + severity);
 
-                    // 展开每个指标
+                    // 只展开真正的评测指标，跳过配置参数
                     Iterator<Map.Entry<String, JsonNode>> fields = corruption.fields();
                     while (fields.hasNext()) {
                         Map.Entry<String, JsonNode> field = fields.next();
                         String fieldName = field.getKey();
 
-                        // 跳过用于构造后缀的字段
-                        if ("corruption_name".equals(fieldName) ||
-                            "corruption_key".equals(fieldName) ||
-                            "severity".equals(fieldName)) {
+                        // 只存储预定义的指标字段
+                        if (!corruptionMetrics.contains(fieldName)) {
                             continue;
                         }
 
