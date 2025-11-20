@@ -644,8 +644,32 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
         try {
             JsonNode root = objectMapper.readTree(result);
 
-            // 处理新格式：{"adversarial": "[...]", "corruption": "[...]"}
-            // adversarial 和 corruption 的值可能是字符串形式的JSON数组，需要二次解析
+            // 检测是否为扁平格式（新格式）
+            // 扁平格式特征：有 map_drop_rate_xxx 或 performance_drop_rate_xxx 这样的键
+            boolean isFlatFormat = false;
+            Iterator<String> fieldNames = root.fieldNames();
+            while (fieldNames.hasNext()) {
+                String fieldName = fieldNames.next();
+                if (fieldName.startsWith("map_drop_rate_") ||
+                    fieldName.startsWith("miss_rate_") ||
+                    fieldName.startsWith("performance_drop_rate_") ||
+                    fieldName.startsWith("perturbation_tolerance_")) {
+                    isFlatFormat = true;
+                    break;
+                }
+            }
+
+            // 处理扁平格式（新格式）
+            if (isFlatFormat) {
+                log.debug("检测到扁平格式的 robustness 数据");
+                if ("detection".equals(task)) {
+                    return computeDetectionRobustnessScoreFromFlatFormat(root);
+                } else {
+                    return computeClassificationRobustnessScore(root);
+                }
+            }
+
+            // 处理数组格式：{"adversarial": [...], "corruption": [...]}
             if (root.has("adversarial") || root.has("corruption")) {
                 JsonNode adversarialNode = root.get("adversarial");
                 JsonNode corruptionNode = root.get("corruption");
@@ -659,7 +683,7 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
 
                 // 根据任务类型选择解析方式
                 if ("detection".equals(task)) {
-                    log.debug("使用目标检测任务的鲁棒性评测指标");
+                    log.debug("使用目标检测任务的鲁棒性评测指标（数组格式）");
                     return computeDetectionRobustnessScore(root);
                 } else {
                     log.debug("使用分类任务的鲁棒性评测指标");
@@ -757,7 +781,135 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
     }
 
     /**
-     * 计算目标检测任务的鲁棒性得分
+     * 从扁平格式计算目标检测任务的鲁棒性得分
+     * 处理格式：{"map_drop_rate_fgsm_eps_0.001": "0.062", ...}
+     *
+     * @param root 扁平格式的鲁棒性评测结果
+     * @return 鲁棒性综合得分（0.0 ~ 1.0）
+     */
+    private double computeDetectionRobustnessScoreFromFlatFormat(JsonNode root) {
+        double totalScore = 0.0;
+        int scoreCount = 0;
+
+        try {
+            // 按攻击方法分组提取 adversarial 指标
+            Map<String, Map<String, Double>> adversarialMetrics = new HashMap<>();
+
+            // 按腐败类型分组提取 corruption 指标
+            Map<String, Map<String, Double>> corruptionMetrics = new HashMap<>();
+
+            // 遍历所有字段
+            Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                String key = field.getKey();
+                double value = field.getValue().asDouble();
+
+                // 提取 adversarial 指标
+                if (key.startsWith("map_drop_rate_")) {
+                    String attackName = key.substring("map_drop_rate_".length());
+                    adversarialMetrics.computeIfAbsent(attackName, k -> new HashMap<>())
+                        .put("map_drop_rate", value);
+                } else if (key.startsWith("miss_rate_")) {
+                    String attackName = key.substring("miss_rate_".length());
+                    adversarialMetrics.computeIfAbsent(attackName, k -> new HashMap<>())
+                        .put("miss_rate", value);
+                } else if (key.startsWith("false_detection_rate_")) {
+                    String attackName = key.substring("false_detection_rate_".length());
+                    adversarialMetrics.computeIfAbsent(attackName, k -> new HashMap<>())
+                        .put("false_detection_rate", value);
+                }
+
+                // 提取 corruption 指标
+                else if (key.startsWith("performance_drop_rate_")) {
+                    String corruptionName = key.substring("performance_drop_rate_".length());
+                    corruptionMetrics.computeIfAbsent(corruptionName, k -> new HashMap<>())
+                        .put("performance_drop_rate", value);
+                } else if (key.startsWith("perturbation_tolerance_")) {
+                    String corruptionName = key.substring("perturbation_tolerance_".length());
+                    corruptionMetrics.computeIfAbsent(corruptionName, k -> new HashMap<>())
+                        .put("perturbation_tolerance", value);
+                }
+            }
+
+            // 计算 adversarial 得分
+            if (!adversarialMetrics.isEmpty()) {
+                double advTotalScore = 0.0;
+                int advCount = 0;
+
+                for (Map.Entry<String, Map<String, Double>> entry : adversarialMetrics.entrySet()) {
+                    Map<String, Double> metrics = entry.getValue();
+                    double attackScore = 0.0;
+                    int metricCount = 0;
+
+                    if (metrics.containsKey("map_drop_rate")) {
+                        attackScore += Math.max(0.0, 1.0 - metrics.get("map_drop_rate"));
+                        metricCount++;
+                    }
+                    if (metrics.containsKey("miss_rate")) {
+                        attackScore += Math.max(0.0, 1.0 - metrics.get("miss_rate"));
+                        metricCount++;
+                    }
+                    if (metrics.containsKey("false_detection_rate")) {
+                        attackScore += Math.max(0.0, 1.0 - metrics.get("false_detection_rate"));
+                        metricCount++;
+                    }
+
+                    if (metricCount > 0) {
+                        advTotalScore += attackScore / metricCount;
+                        advCount++;
+                    }
+                }
+
+                if (advCount > 0) {
+                    totalScore += advTotalScore / advCount;
+                    scoreCount++;
+                    log.debug("对抗攻击得分（扁平格式）: {}", advTotalScore / advCount);
+                }
+            }
+
+            // 计算 corruption 得分
+            if (!corruptionMetrics.isEmpty()) {
+                double corrTotalScore = 0.0;
+                int corrCount = 0;
+
+                for (Map.Entry<String, Map<String, Double>> entry : corruptionMetrics.entrySet()) {
+                    Map<String, Double> metrics = entry.getValue();
+                    double corruptionScore = 0.0;
+                    int metricCount = 0;
+
+                    if (metrics.containsKey("performance_drop_rate")) {
+                        corruptionScore += Math.max(0.0, 1.0 - metrics.get("performance_drop_rate"));
+                        metricCount++;
+                    }
+                    if (metrics.containsKey("perturbation_tolerance")) {
+                        corruptionScore += Math.max(0.0, metrics.get("perturbation_tolerance"));
+                        metricCount++;
+                    }
+
+                    if (metricCount > 0) {
+                        corrTotalScore += corruptionScore / metricCount;
+                        corrCount++;
+                    }
+                }
+
+                if (corrCount > 0) {
+                    totalScore += corrTotalScore / corrCount;
+                    scoreCount++;
+                    log.debug("腐败测试得分（扁平格式）: {}", corrTotalScore / corrCount);
+                }
+            }
+
+            return scoreCount > 0 ? totalScore / scoreCount : 0.0;
+
+        } catch (Exception e) {
+            log.error("扁平格式鲁棒性得分计算失败: {}", e.getMessage(), e);
+            return 0.0;
+        }
+    }
+
+    /**
+     * 计算目标检测任务的鲁棒性得分（数组格式）
      * 解析包含 adversarial 和 corruption 字段的鲁棒性评测结果
      *
      * @param root 鲁棒性评测结果的JSON根节点
