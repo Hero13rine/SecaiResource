@@ -339,14 +339,24 @@ public class FileUtils {
 
         Long userId = modelMessage.getUserId();
         Long modelId = modelMessage.getId();
+        // 修复镜像标签不一致问题：显式指定 :latest 标签，确保推送和拉取的镜像名称完全匹配
+        // 原代码（已注释）：
+        // String buildAndPushScript = "#!/bin/bash\n" +
+        //         "cd /home/xd-1/k8s/userData/" + userId + "/" + modelId + "/modelData\n" +
+        //         "echo \"正在制作镜像...\"\n" +
+        //         "sudo docker build --build-arg condaEnv=" + condaEnv + " -t " + modelId + ":latest .\n" +
+        //         "echo \"正在给镜像打标签...\"\n" +
+        //         "sudo docker tag " + modelId + ":latest " + registryHost + "/" + modelId + "\n" +
+        //         "echo \"正在推送镜像到仓库...\"\n" +
+        //         "sudo docker push " + registryHost + "/" + modelId + "\n";
         String buildAndPushScript = "#!/bin/bash\n" +
                 "cd /home/xd-1/k8s/userData/" + userId + "/" + modelId + "/modelData\n" +
                 "echo \"正在制作镜像...\"\n" +
                 "sudo docker build --build-arg condaEnv=" + condaEnv + " -t " + modelId + ":latest .\n" +
                 "echo \"正在给镜像打标签...\"\n" +
-                "sudo docker tag " + modelId + ":latest " + registryHost + "/" + modelId + "\n" +
+                "sudo docker tag " + modelId + ":latest " + registryHost + "/" + modelId + ":latest\n" +
                 "echo \"正在推送镜像到仓库...\"\n" +
-                "sudo docker push " + registryHost + "/" + modelId + "\n";
+                "sudo docker push " + registryHost + "/" + modelId + ":latest\n";
         try {
             Files.write(shDestinationPath, buildAndPushScript.getBytes());
             log.info("镜像相关脚本生成成功！！");
@@ -498,10 +508,9 @@ public class FileUtils {
 
         Map<String, Object> estimatorParams = new LinkedHashMap<>();
         estimatorParams.put("input_shape", buildInputShape(evaluationConfig));
-        if (!"detection".equalsIgnoreCase(evaluationConfig.getTask())) {
-            estimatorParams.put("nb_classes",
-                    evaluationConfig.getNbClasses() != null ? evaluationConfig.getNbClasses() : 10);
-        }
+        // nb_classes 对所有任务都适用（分类和检测都需要知道类别数）
+        estimatorParams.put("nb_classes",
+                evaluationConfig.getNbClasses() != null ? evaluationConfig.getNbClasses() : 10);
         estimatorParams.put("clip_values", flowSequence(Arrays.asList(0, 1)));
         estimatorParams.put("device", "cuda");
         estimatorParams.put("device_type", "gpu");
@@ -554,9 +563,43 @@ public class FileUtils {
                 }
                 Map<String, Object> methodNode = castToMap(
                         methodContainer.computeIfAbsent(pair.getMethod(), FileUtils::createDefaultMethodNode));
+
+                // 设置 metrics
                 methodNode.put("metrics", pair.getMetrics() != null
                         ? new ArrayList<>(pair.getMetrics())
                         : new ArrayList<>());
+
+                // 处理对抗攻击参数（adversarial 方法）
+                if ("adversarial".equals(pair.getMethod()) && pair.getAttacks() != null && !pair.getAttacks().isEmpty()) {
+                    Map<String, Object> attacks = new LinkedHashMap<>();
+
+                    for (String attackName : pair.getAttacks()) {
+                        Map<String, Object> attackConfig = new LinkedHashMap<>();
+                        Map<String, Object> attackParams = new LinkedHashMap<>();
+
+                        if ("fgsm".equals(attackName)) {
+                            // FGSM 攻击：解析 fgsmEps 参数
+                            Double eps = parseRangeParameterDouble(pair.getFgsmEps(), 0.03);
+                            attackParams.put("eps", eps);
+                        } else if ("pgd".equals(attackName)) {
+                            // PGD 攻击：需要 eps 和 steps 两个参数
+                            Integer steps = parseRangeParameterInt(pair.getPgdSteps(), 10);
+                            attackParams.put("eps", 0.03);      // PGD 的 eps 可以固定或从前端传递
+                            attackParams.put("steps", steps);   // PGD 的核心参数是 steps
+                        }
+
+                        attackConfig.put("parameters", attackParams);
+                        attacks.put(attackName, attackConfig);
+                    }
+
+                    methodNode.put("attacks", attacks);
+                }
+
+                // 处理扰动攻击参数（corruption 方法）
+                if ("corruption".equals(pair.getMethod()) && pair.getCorruptions() != null && !pair.getCorruptions().isEmpty()) {
+                    // corruption_config 可以是扰动方法列表
+                    methodNode.put("corruption_config", new ArrayList<>(pair.getCorruptions()));
+                }
             }
         }
         return evaluation;
@@ -659,6 +702,58 @@ public class FileUtils {
             return "";
         }
         return task;
+    }
+
+    /**
+     * 解析前端传来的范围参数（浮点数版本），格式: [start,end,step]
+     * 目前取 start 值作为默认值，后续可以改为生成多个配置
+     * @param rangeStr 范围字符串，如 "[0.001,0.01,0.001]"
+     * @param defaultValue 解析失败时的默认值
+     * @return 解析出的起始值
+     */
+    private static Double parseRangeParameterDouble(String rangeStr, Double defaultValue) {
+        if (rangeStr == null || rangeStr.trim().isEmpty()) {
+            return defaultValue;
+        }
+
+        try {
+            // 去掉方括号和空格
+            String clean = rangeStr.replaceAll("[\\[\\]\\s]", "");
+            String[] parts = clean.split(",");
+            if (parts.length >= 1) {
+                return Double.parseDouble(parts[0]); // 取起始值
+            }
+        } catch (Exception e) {
+            // 解析失败，返回默认值
+        }
+
+        return defaultValue;
+    }
+
+    /**
+     * 解析前端传来的范围参数（整数版本），格式: [start,end,step]
+     * 目前取 start 值作为默认值，后续可以改为生成多个配置
+     * @param rangeStr 范围字符串，如 "[5,20,5]"
+     * @param defaultValue 解析失败时的默认值
+     * @return 解析出的起始值
+     */
+    private static Integer parseRangeParameterInt(String rangeStr, Integer defaultValue) {
+        if (rangeStr == null || rangeStr.trim().isEmpty()) {
+            return defaultValue;
+        }
+
+        try {
+            // 去掉方括号和空格
+            String clean = rangeStr.replaceAll("[\\[\\]\\s]", "");
+            String[] parts = clean.split(",");
+            if (parts.length >= 1) {
+                return Integer.parseInt(parts[0]); // 取起始值
+            }
+        } catch (Exception e) {
+            // 解析失败，返回默认值
+        }
+
+        return defaultValue;
     }
 }
 

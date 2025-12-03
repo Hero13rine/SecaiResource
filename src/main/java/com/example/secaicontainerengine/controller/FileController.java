@@ -206,6 +206,26 @@ public class FileController {
                 // 构建创建用户的评测配置文件的对象(userConfig)
                 EvaluationConfig evaluationConfig = new EvaluationConfig();
                 BeanUtils.copyProperties(modelConfig, evaluationConfig);
+
+                // 解析 inputShape 字符串（格式: "[3,32,32]"），拆分为 channels, height, width
+                if (modelConfig.getInputShape() != null && !modelConfig.getInputShape().trim().isEmpty()) {
+                    try {
+                        String cleanShape = modelConfig.getInputShape().replaceAll("[\\[\\]\\s]", "");
+                        String[] parts = cleanShape.split(",");
+                        if (parts.length == 3) {
+                            evaluationConfig.setInputChannels(Integer.parseInt(parts[0]));
+                            evaluationConfig.setInputHeight(Integer.parseInt(parts[1]));
+                            evaluationConfig.setInputWidth(Integer.parseInt(parts[2]));
+                        }
+                    } catch (Exception e) {
+                        log.warn("解析 inputShape 失败，使用默认值 [3,32,32]: " + modelConfig.getInputShape(), e);
+                        // 使用默认值
+                        evaluationConfig.setInputChannels(3);
+                        evaluationConfig.setInputHeight(32);
+                        evaluationConfig.setInputWidth(32);
+                    }
+                }
+
                 evaluationConfig.setEvaluateMethods(businessConfig.getEvaluateMethods());
                 String configsPath = modelSavePath + "/" + "evaluationConfigs";
                 generateEvaluationYamlConfigs(evaluationConfig, businessConfig,configsPath);

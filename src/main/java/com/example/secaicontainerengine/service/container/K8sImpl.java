@@ -238,6 +238,29 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                 String phase = pod.getStatus().getPhase();
                 log.info("action: " + action +" phase：" + phase);
 
+                // 打印详细的 Pending 原因（用于调试）
+                if (phase.equals("Pending")) {
+                    // 打印 Pod Conditions（状态条件）
+                    if (pod.getStatus().getConditions() != null) {
+                        pod.getStatus().getConditions().forEach(condition -> {
+                            log.info("Pod Condition - Type: {}, Status: {}, Reason: {}, Message: {}",
+                                condition.getType(), condition.getStatus(),
+                                condition.getReason(), condition.getMessage());
+                        });
+                    }
+                    // 打印容器状态（等待原因）
+                    if (pod.getStatus().getContainerStatuses() != null) {
+                        pod.getStatus().getContainerStatuses().forEach(cs -> {
+                            if (cs.getState() != null && cs.getState().getWaiting() != null) {
+                                log.warn("容器 {} 等待中 - Reason: {}, Message: {}",
+                                    cs.getName(),
+                                    cs.getState().getWaiting().getReason(),
+                                    cs.getState().getWaiting().getMessage());
+                            }
+                        });
+                    }
+                }
+
                 // ==== 1. 记录Pod创建时间（全局起始时间） ====
                 Instant creationTime = Instant.parse(pod.getMetadata().getCreationTimestamp());
                 statusTimestamps.putIfAbsent("creationTime", creationTime);
