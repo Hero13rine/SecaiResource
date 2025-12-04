@@ -269,8 +269,12 @@ public class FileController {
 
                 evaluationConfig.setEvaluateMethods(businessConfig.getEvaluateMethods());
                 String configsPath = modelSavePath + "/" + "evaluationConfigs";
-                generateEvaluationYamlConfigs(evaluationConfig, businessConfig,configsPath);
-
+                // 根据任务类型选择合适的配置生成方法
+                if ("classification".equals(evaluationConfig.getTask())) {
+                    FileUtils.generateClassificationEvaluationYaml(evaluationConfig, businessConfig, configsPath);
+                } else {
+                    generateEvaluationYamlConfigs(evaluationConfig, businessConfig, configsPath);
+                }
 
                 log.info("文件处理完成");
 
