@@ -471,6 +471,12 @@ public class FileUtils {
 //    }
 
     public static void generateEvaluationYamlConfigs(EvaluationConfig evaluationConfig, BusinessConfig businessConfig, String outputPath) throws IOException {
+        // 当任务类型为classification时，使用简化版的生成逻辑
+        if ("classification".equals(evaluationConfig.getTask())) {
+            generateClassificationEvaluationYaml(evaluationConfig, businessConfig, outputPath);
+            return;
+        }
+        
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("model", buildModelSection(evaluationConfig));
         // 传递 task 类型给 buildEvaluationSection
@@ -499,6 +505,100 @@ public class FileUtils {
             yaml.dump(root, writer);
         }
     }
+    /**
+     * 为classification任务生成简化的评估YAML配置
+     */
+    public static void generateClassificationEvaluationYaml(EvaluationConfig evaluationConfig, BusinessConfig businessConfig, String outputPath) throws IOException {
+        // 构造 model 节点
+        Map<String, Object> modelInstantiation = new HashMap<>();
+        modelInstantiation.put("model_path", "/app/userData/modelData/model/" + evaluationConfig.getModelNetFileName());
+        modelInstantiation.put("weight_path", "/app/userData/modelData/" + evaluationConfig.getWeightFileName());
+        modelInstantiation.put("model_name", evaluationConfig.getModelNetName());
+        modelInstantiation.put("parameters", new HashMap<>()); // 空参数
+
+        Map<String, Object> modelEstimator = new HashMap<>();
+        modelEstimator.put("framework", evaluationConfig.getFramework());
+        modelEstimator.put("task", evaluationConfig.getTask());
+
+        Map<String, Object> estimatorParams = new HashMap<>();
+        // 输入数据形状：优先使用传入的参数，如果为空则使用默认值 [3, 32, 32]
+        List<Integer> inputShape;
+        if (evaluationConfig.getInputChannels() != null
+                && evaluationConfig.getInputHeight() != null
+                && evaluationConfig.getInputWidth() != null) {
+            inputShape = Arrays.asList(
+                    evaluationConfig.getInputChannels(),
+                    evaluationConfig.getInputHeight(),
+                    evaluationConfig.getInputWidth()
+            );
+        } else {
+            // 向后兼容：如果参数为空，使用默认值
+            inputShape = Arrays.asList(3, 32, 32);
+        }
+        estimatorParams.put("input_shape", inputShape);
+
+        // 类别数目：优先使用传入的参数，如果为空则使用默认值 10
+        Integer nbClasses = evaluationConfig.getNbClasses() != null
+                ? evaluationConfig.getNbClasses()
+                : 10; // 向后兼容：默认值
+        estimatorParams.put("nb_classes", nbClasses);
+        estimatorParams.put("clip_values", Arrays.asList(0, 1));
+        estimatorParams.put("device", "cuda");
+        estimatorParams.put("device_type", "gpu");
+        modelEstimator.put("parameters", estimatorParams);
+
+        Map<String, Object> modelConfig = new HashMap<>();
+        modelConfig.put("instantiation", modelInstantiation);
+        modelConfig.put("estimator", modelEstimator);
+
+        // 构造 evaluation 节点
+        Map<String, Object> evaluation = new LinkedHashMap<>();
+
+        // 初始化每个维度为空 Map
+        List<String> dimensions = Arrays.asList("basic", "robustness", "interpretability", "safety", "generalization", "fairness");
+        for (String dim : dimensions) {
+            evaluation.put(dim, new LinkedHashMap<>());
+        }
+
+        if (businessConfig.getEvaluateMethods() != null) {
+            for (BusinessConfig.EvaluationDimensionConfig dimensionConfig : businessConfig.getEvaluateMethods()) {
+                String dimension = dimensionConfig.getDimension();
+                List<BusinessConfig.MethodMetricPair> methodMetricPairs = dimensionConfig.getMethodMetricMap();
+                if (!dimensions.contains(dimension)) {
+                    continue; // 忽略未定义的维度
+                }
+                Map<String, List<String>> methodMap = (Map<String, List<String>>) evaluation.get(dimension);
+                if (methodMetricPairs != null) {
+                    for (BusinessConfig.MethodMetricPair pair : methodMetricPairs) {
+                        if (pair != null && pair.getMethod() != null) {
+                            String method = pair.getMethod();
+                            List<String> metrics = pair.getMetrics() != null ? pair.getMetrics() : new ArrayList<>();
+                            methodMap.put(method, metrics);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 合并最终结构
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("model", modelConfig);
+        root.put("evaluation", evaluation);
+
+        // 输出 evaluationConfig.yaml
+        File outputFile = new File(outputPath, "evaluationConfig.yaml");
+        if (!outputFile.getParentFile().exists() && !outputFile.getParentFile().mkdirs()) {
+            throw new IOException("无法创建输出目录：" + outputPath);
+        }
+
+        try (FileWriter writer = new FileWriter(outputFile)) {
+            DumperOptions dumperOptions = new DumperOptions();
+            dumperOptions.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+            Yaml yaml = new Yaml(dumperOptions);
+            yaml.dump(root, writer);
+        }
+    }
+
 
     private static Map<String, Object> buildModelSection(EvaluationConfig evaluationConfig) {
         Map<String, Object> instantiation = new LinkedHashMap<>();
