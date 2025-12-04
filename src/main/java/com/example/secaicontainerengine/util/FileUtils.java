@@ -471,12 +471,9 @@ public class FileUtils {
 //    }
 
     public static void generateEvaluationYamlConfigs(EvaluationConfig evaluationConfig, BusinessConfig businessConfig, String outputPath) throws IOException {
-        // 当任务类型为classification时，使用简化版的生成逻辑
-        if ("classification".equals(evaluationConfig.getTask())) {
-            generateClassificationEvaluationYaml(evaluationConfig, businessConfig, outputPath);
-            return;
-        }
+
         
+        log.info("使用通用模板生成配置文件");
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("model", buildModelSection(evaluationConfig));
         // 传递 task 类型给 buildEvaluationSection
@@ -509,6 +506,7 @@ public class FileUtils {
      * 为classification任务生成简化的评估YAML配置
      */
     public static void generateClassificationEvaluationYaml(EvaluationConfig evaluationConfig, BusinessConfig businessConfig, String outputPath) throws IOException {
+        log.info("开始使用classification专用模板生成配置文件");
         // 构造 model 节点
         Map<String, Object> modelInstantiation = new HashMap<>();
         modelInstantiation.put("model_path", "/app/userData/modelData/model/" + evaluationConfig.getModelNetFileName());
@@ -939,6 +937,7 @@ public class FileUtils {
             // 去掉方括号和空格
             String clean = rangeStr.replaceAll("[\\[\\]\\s]", "");
             String[] parts = clean.split(",");
+
             if (parts.length >= 1) {
                 return Integer.parseInt(parts[0]); // 取起始值
             }
