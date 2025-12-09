@@ -470,10 +470,13 @@ public class FileUtils {
 //        }
 //    }
 
-    public static void generateEvaluationYamlConfigs(EvaluationConfig evaluationConfig, BusinessConfig businessConfig, String outputPath) throws IOException {
+    /**
+     * 为检测任务生成评估YAML配置
+     */
+    public static void generateDetectionEvaluationYaml(EvaluationConfig evaluationConfig, BusinessConfig businessConfig, String outputPath) throws IOException {
 
-        
-        log.info("使用通用模板生成配置文件");
+
+        log.info("使用检测任务模板生成配置文件");
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("model", buildModelSection(evaluationConfig));
         // 传递 task 类型给 buildEvaluationSection
@@ -543,6 +546,7 @@ public class FileUtils {
         estimatorParams.put("clip_values", Arrays.asList(0, 1));
         estimatorParams.put("device", "cuda");
         estimatorParams.put("device_type", "gpu");
+        estimatorParams.put("channels_first", true);
         modelEstimator.put("parameters", estimatorParams);
 
         Map<String, Object> modelConfig = new HashMap<>();

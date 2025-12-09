@@ -992,17 +992,38 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
 
             // 根据任务类型选择不同的指标
             if ("detection".equals(task)) {
-                // 目标检测任务：使用 membership_inference_asr（成员推理攻击成功率）
-                if (root.has("membership_inference_asr")) {
+                // 目标检测任务：使用 MIA 评测实际回传的字段
+                // Python 实际发送：Accuracy, Precision, Recall, F1, TPR, FPR, AUC
+
+                // 1. 使用 TPR (True Positive Rate)：攻击者正确识别训练集成员的比例
+                // TPR 越高说明攻击越成功，模型越不安全
+                if (root.has("TPR")) {
                     try {
-                        double rawValue = Double.parseDouble(root.get("membership_inference_asr").asText());
-                        // membership_inference_asr 是攻击成功率，越低越安全，转换为安全得分
-                        double normalizedValue = Math.max(0.0, 1.0 - rawValue);
+                        double tpr = Double.parseDouble(root.get("TPR").asText());
+                        // TPR 是攻击成功率，越低越安全，转换为安全得分
+                        double normalizedValue = Math.max(0.0, 1.0 - tpr);
                         totalScore += normalizedValue;
                         validMetricsCount++;
-                        log.debug("目标检测安全性指标 membership_inference_asr: {}, 归一化得分: {}", rawValue, normalizedValue);
+                        log.debug("目标检测安全性指标 TPR: {}, 归一化得分: {}", tpr, normalizedValue);
                     } catch (NumberFormatException e) {
-                        log.warn("字段 membership_inference_asr 解析失败: {}", e.getMessage());
+                        log.warn("字段 TPR 解析失败: {}", e.getMessage());
+                    }
+                }
+
+                // 2. 使用 AUC (Area Under ROC Curve)：攻击模型的整体性能
+                // AUC=0.5 表示随机猜测（攻击无效），AUC=1.0 表示完美攻击
+                if (root.has("AUC")) {
+                    try {
+                        double auc = Double.parseDouble(root.get("AUC").asText());
+                        // 将 AUC 转换为安全得分：score = 1 - (AUC - 0.5) * 2
+                        // AUC=0.5 -> score=1.0 (完全安全)
+                        // AUC=1.0 -> score=0.0 (完全不安全)
+                        double normalizedValue = Math.max(0.0, 1.0 - (auc - 0.5) * 2);
+                        totalScore += normalizedValue;
+                        validMetricsCount++;
+                        log.debug("目标检测安全性指标 AUC: {}, 归一化得分: {}", auc, normalizedValue);
+                    } catch (NumberFormatException e) {
+                        log.warn("字段 AUC 解析失败: {}", e.getMessage());
                     }
                 }
             } else {
