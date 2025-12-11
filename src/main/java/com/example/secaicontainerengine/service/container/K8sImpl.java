@@ -19,12 +19,7 @@ import com.example.secaicontainerengine.service.modelEvaluation.EvaluationResult
 import com.example.secaicontainerengine.util.PodUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jcraft.jsch.Channel;
-import com.jcraft.jsch.ChannelSftp;
-import com.jcraft.jsch.JSch;
-import com.jcraft.jsch.JSchException;
-import com.jcraft.jsch.Session;
-import com.jcraft.jsch.SftpException;
+import com.jcraft.jsch.*;
 import freemarker.template.TemplateException;
 import io.fabric8.kubernetes.api.model.ContainerStatus;
 import io.fabric8.kubernetes.api.model.HasMetadata;
@@ -40,19 +35,21 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import static com.example.secaicontainerengine.util.YamlUtil.getName;
 import static com.example.secaicontainerengine.util.YamlUtil.renderTemplate;
@@ -79,11 +76,14 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     @Value("${nfs.rootPath}")
     private String rootPath;
 
+    /**
+     * NFS 服务器 IP，同时也是 SFTP host
+     */
     @Value("${sftp.host}")
     private String nfsIp;
 
     @Value("${sftp.port}")
-    private Integer sftpPort;
+    private int sftpPort;
 
     @Value("${sftp.username}")
     private String sftpUsername;
@@ -134,9 +134,10 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     @Value("${localhost.resultUrl}")
     private String resultUrl;
 
-    // 初始化接口
+    // ===================== 初始化接口 =====================
+
     @Override
-    public List<ByteArrayInputStream> initNew(ModelMessage modelMessage, List<String> evaluationTypes) throws java.io.IOException, TemplateException {
+    public List<ByteArrayInputStream> initNew(ModelMessage modelMessage, List<String> evaluationTypes) throws IOException, TemplateException {
         List<ByteArrayInputStream> streams = new ArrayList<>();
         for (String evaluationType : evaluationTypes) {
             String podName = modelMessage.getUserId() + "-" + modelMessage.getId() + "-" + evaluationType.toLowerCase();
@@ -166,20 +167,21 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
             values.put("resultColumn", evaluationType + "Result");
 
             String yamlContent = renderTemplate(k8sAdversarialGpuYaml, values);
-            streams.add(new ByteArrayInputStream(yamlContent.getBytes(StandardCharsets.UTF_8)));
+            streams.add(new ByteArrayInputStream(yamlContent.getBytes()));
 
             log.info("初始化接口：streams构建完毕");
         }
         return streams;
     }
 
-    // 启动接口
+    // ===================== 启动接口 =====================
+
     @Override
-    public void start(Long userId, Long modelId, List<ByteArrayInputStream> streams) throws java.io.IOException {
+    public void start(Long userId, Long modelId, List<ByteArrayInputStream> streams) throws IOException {
 
         for (ByteArrayInputStream stream : streams) {
 
-            // getName 会读取 stream，所以复制一份
+            // getName 会消费流，所以先读到 byte[]
             byte[] yamlBytes = stream.readAllBytes();
             ByteArrayInputStream streamForName = new ByteArrayInputStream(yamlBytes);
             ByteArrayInputStream streamForCreate = new ByteArrayInputStream(yamlBytes);
@@ -195,7 +197,7 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
             taskExecutor.execute(() -> {
                 long startTime = System.currentTimeMillis();
 
-                // 1. Upsert evaluation_result
+                // 1. upsert evaluation_result
                 LambdaQueryWrapper<EvaluationResult> erQw = new LambdaQueryWrapper<>();
                 erQw.eq(EvaluationResult::getModelId, modelId)
                         .eq(EvaluationResult::getEvaluateMethodId, evaluationMethodId);
@@ -216,7 +218,7 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                 }
 
                 try {
-                    // 2. Pod 已存在则先删除
+                    // 2. 若 Pod 已存在先删除，避免 409
                     Pod oldPod = K8sClient.pods().inNamespace("default").withName(containerName).get();
                     if (oldPod != null) {
                         log.warn("Pod {} 已存在，先删除再重建", containerName);
@@ -244,6 +246,8 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         }
     }
 
+    // ===================== 监听 Pod 状态 =====================
+
     @Override
     public void watchStatus(Long userId, Long modelId, String containerName) {
         final CountDownLatch closeLatch = new CountDownLatch(1);
@@ -260,7 +264,7 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                         String evaluateMethod = containerName.split("-")[2];
                         log.info("action: {} phase: {}", action, phase);
 
-                        // Pending 时打印详细原因
+                        // Pending 状态下打印详细原因
                         if ("Pending".equals(phase)) {
                             if (pod.getStatus().getConditions() != null) {
                                 pod.getStatus().getConditions().forEach(condition -> {
@@ -281,11 +285,10 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                             }
                         }
 
-                        // 记录 creationTime
+                        // 记录时间
                         statusTimestamps.putIfAbsent("creationTime",
                                 Instant.parse(pod.getMetadata().getCreationTimestamp()));
 
-                        // Pending -> ContainerCreating
                         if ("Pending".equals(phase)) {
                             List<ContainerStatus> css = pod.getStatus().getContainerStatuses();
                             if (css != null) {
@@ -300,18 +303,18 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                             }
                         }
 
-                        // Running
                         if ("Running".equals(phase)) {
                             statusTimestamps.putIfAbsent("runningStart", Instant.now());
                         }
 
-                        // Succeeded / Failed
+                        // Succeeded / Failed 统一处理
                         if (("Succeeded".equals(phase) || "Failed".equals(phase))
                                 && !statusTimestamps.containsKey("finishStart")) {
 
                             statusTimestamps.put("finishStart", Instant.now());
                             log.info("Pod {} 结束，phase={}", containerName, phase);
 
+                            // 获取日志并保存（本地 + NFS）
                             try {
                                 String logs = K8sClient.pods()
                                         .inNamespace("default")
@@ -332,14 +335,14 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                                 log.error("记录Pod时间失败", e);
                             }
 
-                            // 更新 evaluation_result 最终状态
+                            // 更新 evaluation_result 状态
                             updateEvaluationResultFinalStatus(containerName, phase);
 
-                            // 删除 Pod，释放资源
+                            // 删除 Pod 触发 DELETED
                             deleteSingle(userId, containerName);
                         }
 
-                        // container 表更新
+                        // container 表状态同步
                         if (action == Action.ADDED || action == Action.MODIFIED) {
                             Container c = Container.builder()
                                     .containerName(containerName)
@@ -388,6 +391,8 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         }
     }
 
+    // ===================== 评测结果状态收尾 =====================
+
     private void updateEvaluationResultFinalStatus(String podName, String phase) {
         Long modelId = Long.parseLong(podName.split("-")[1]);
         String evaluateMethod = podName.split("-")[2];
@@ -408,6 +413,8 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         }
     }
 
+    // ===================== Pod 回收与查询 =====================
+
     @Override
     public void deleteSingle(Long userId, String containerName) {
         K8sClient.pods().inNamespace("default").withName(containerName).delete();
@@ -424,6 +431,8 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     public List<String> getContainersByModelId(Long modelId) {
         return containerMapper.getContainerNameByModelId(modelId);
     }
+
+    // ===================== 时间统计 =====================
 
     public void recordPodTime(String containerName, Map<String, Instant> statusTimestamps) throws JsonProcessingException {
         Instant containerCreatingStart = statusTimestamps.get("containerCreatingStart");
@@ -478,6 +487,8 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         }
     }
 
+    // ===================== 日志解析（显存/内存使用） =====================
+
     public void parseMonitorResults(String monitorLogs, String podName) {
         Long modelId = Long.parseLong(podName.split("-")[1]);
         String evaluateMethod = podName.split("-")[2];
@@ -505,96 +516,144 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         evaluationResultMapper.updateById(er);
     }
 
+    // ===================== 日志保存：本地 + NFS (SFTP) =====================
+
     /**
-     * 使用 SFTP 将 Pod 日志上传到 NFS 服务器。
+     * 统一入口：同时尝试保存到本地和 NFS。
+     * 无论 Pod 成功/失败，都会调用。
      */
     private void savePodLogs(Long userId, Long modelId, String evaluateMethod, String phase, String logs) {
-        ChannelSftp sftp = null;
-        Session session = null;
+        // 1. 本地一份
         try {
-            // 1. 建立 SFTP 连接
+            savePodLogsLocal(userId, modelId, evaluateMethod, phase, logs);
+        } catch (Exception e) {
+            log.warn("本地保存 Pod 日志失败，userId: {}, modelId: {}, evaluateMethod: {}",
+                    userId, modelId, evaluateMethod, e);
+        }
+
+        // 2. NFS SFTP 一份
+        try {
+            savePodLogsToNfs(userId, modelId, evaluateMethod, phase, logs);
+        } catch (Exception e) {
+            log.warn("通过 SFTP 保存 Pod 日志到 NFS 失败，userId: {}, modelId: {}, evaluateMethod: {}",
+                    userId, modelId, evaluateMethod, e);
+        }
+    }
+
+    /**
+     * 本地保存 Pod 日志
+     * 路径形如：{secAI-container-engine 进程启动目录}/logs/{userId}/{modelId}/{evaluateMethod}/xxx.log
+     */
+    private void savePodLogsLocal(Long userId, Long modelId, String evaluateMethod, String phase, String logs) throws IOException {
+        String appRoot = System.getProperty("user.dir");
+
+        Path logDir = Path.of(
+                appRoot,
+                "logs",
+                String.valueOf(userId),
+                String.valueOf(modelId),
+                evaluateMethod
+        );
+        Files.createDirectories(logDir);
+
+        String fileName = String.format(
+                "%s-%s-%d.log",
+                evaluateMethod,
+                phase,
+                System.currentTimeMillis()
+        );
+        Path logFile = logDir.resolve(fileName);
+
+        Files.writeString(
+                logFile,
+                logs,
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING
+        );
+
+        log.info("本地 Pod 日志已保存: {}", logFile.toAbsolutePath());
+    }
+
+    /**
+     * 通过 SFTP 把 Pod 日志保存到 NFS
+     * 路径：rootPath/userData/{userId}/{modelId}/{evaluationData}/{evaluateMethod}/logs/xxx.log
+     */
+    private void savePodLogsToNfs(Long userId, Long modelId, String evaluateMethod, String phase, String logs) throws Exception {
+        String remoteDir = String.format(
+                "%s/%s/%d/%d/%s/%s/logs",
+                rootPath,
+                userData,
+                userId,
+                modelId,
+                evaluationData,
+                evaluateMethod
+        );
+
+        String fileName = String.format(
+                "%s-%s-%d.log",
+                evaluateMethod,
+                phase,
+                System.currentTimeMillis()
+        );
+
+        uploadTextBySftp(remoteDir, fileName, logs);
+    }
+
+    /**
+     * 通用 SFTP 文本上传工具
+     */
+    private void uploadTextBySftp(String remoteDir, String fileName, String content) throws JSchException, SftpException, IOException {
+        Session session = null;
+        Channel channel = null;
+        ChannelSftp sftp = null;
+        try {
             JSch jsch = new JSch();
             session = jsch.getSession(sftpUsername, nfsIp, sftpPort);
             session.setPassword(sftpPassword);
 
-            java.util.Properties config = new java.util.Properties();
+            Properties config = new Properties();
             config.put("StrictHostKeyChecking", "no");
             session.setConfig(config);
-            session.connect(30_000);
+            session.connect(10_000);
 
-            Channel channel = session.openChannel("sftp");
-            channel.connect(30_000);
+            channel = session.openChannel("sftp");
+            channel.connect(10_000);
             sftp = (ChannelSftp) channel;
 
-            // 2. 拼接远程目录：/home/xd-1/k8s/userData/{userId}/{modelId}/evaluationData/{evaluateMethod}/logs
-            String remoteDir = String.format(
-                    "%s/%s/%d/%d/%s/%s/logs",
-                    rootPath,       // /home/xd-1/k8s
-                    userData,       // userData
-                    userId,
-                    modelId,
-                    evaluationData, // evaluationData
-                    evaluateMethod  // basic / fairness / ...
-            );
-
-            // 3. 确保远程目录存在（递归创建）
-            ensureRemoteDirExists(sftp, remoteDir);
-
-            // 4. 构造文件名
-            String fileName = String.format(
-                    "%s-%s-%d.log",
-                    evaluateMethod,
-                    phase,
-                    System.currentTimeMillis()
-            );
-
-            String remoteFilePath = remoteDir + "/" + fileName;
-
-            // 5. 上传文件
-            try (InputStream is = new ByteArrayInputStream(logs.getBytes(StandardCharsets.UTF_8))) {
-                sftp.put(is, remoteFilePath);
+            // 逐级创建目录
+            String[] folders = remoteDir.split("/");
+            String pathSoFar = "";
+            for (String f : folders) {
+                if (f == null || f.isEmpty()) continue;
+                pathSoFar = pathSoFar + "/" + f;
+                try {
+                    sftp.cd(pathSoFar);
+                } catch (SftpException e) {
+                    sftp.mkdir(pathSoFar);
+                    sftp.cd(pathSoFar);
+                }
             }
 
-            log.info("日志文件已上传到 NFS：{}", remoteFilePath);
+            try (InputStream is = new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))) {
+                sftp.put(is, fileName);
+            }
 
-        } catch (Exception e) {
-            log.warn("保存 Pod 日志失败，userId: {}, modelId: {}, evaluateMethod: {}",
-                    userId, modelId, evaluateMethod, e);
+            log.info("SFTP 日志上传成功: {}/{}", remoteDir, fileName);
         } finally {
-            if (sftp != null && sftp.isConnected()) {
-                try {
-                    sftp.disconnect();
-                } catch (Exception ignore) {
-                }
+            if (sftp != null) {
+                sftp.disconnect();
             }
-            if (session != null && session.isConnected()) {
-                try {
-                    session.disconnect();
-                } catch (Exception ignore) {
-                }
+            if (channel != null) {
+                channel.disconnect();
+            }
+            if (session != null) {
+                session.disconnect();
             }
         }
     }
 
-    /**
-     * 递归创建远程目录
-     */
-    private void ensureRemoteDirExists(ChannelSftp sftp, String remoteDir) throws SftpException {
-        String[] folders = remoteDir.split("/");
-        String path = "";
-        for (String folder : folders) {
-            if (folder == null || folder.trim().isEmpty()) {
-                continue;
-            }
-            path = path + "/" + folder;
-            try {
-                sftp.cd(path);
-            } catch (SftpException e) {
-                // 目录不存在则创建
-                sftp.mkdir(path);
-            }
-        }
-    }
+    // ===================== 资源计算 =====================
 
     @Override
     public ResourceConfig calculatePodResourceFromModel(ModelMessage modelMessage) {
@@ -617,4 +676,5 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     public List<ByteArrayInputStream> init(Long userId, Map<String, String> imageUrl, Map<String, Map> imageParam) {
         return List.of();
     }
+
 }
