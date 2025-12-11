@@ -52,15 +52,19 @@ public class FileUtils {
                 }
 
                 if (zipEntry.isDirectory()) {
-                    // 创建目录
-                    if (!newFile.mkdirs()) {
-                        throw new BusinessException(ErrorCode.SYSTEM_ERROR, "无法创建目录: " + newFile.getPath());
+                    // 目录存在就不要再创建
+                    if (!newFile.exists()) {
+                        if (!newFile.mkdirs()) {
+                            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "无法创建目录: " + newFile.getPath());
+                        }
                     }
                 } else {
-                    // 确保父目录存在
+                    // 文件情况：先确保父目录存在
                     File parentDir = newFile.getParentFile();
-                    if (!parentDir.exists() && !parentDir.mkdirs()) {
-                        throw new BusinessException(ErrorCode.SYSTEM_ERROR, "无法创建父目录: " + parentDir.getPath());
+                    if (!parentDir.exists()) {
+                        if (!parentDir.mkdirs()) {
+                            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "无法创建父目录: " + parentDir.getPath());
+                        }
                     }
 
                     // 写入文件
