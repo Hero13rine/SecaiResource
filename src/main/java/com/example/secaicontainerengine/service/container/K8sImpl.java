@@ -1,6 +1,7 @@
 package com.example.secaicontainerengine.service.container;
 
 import cn.hutool.json.JSONUtil;
+import java.io.File;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -40,6 +41,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
@@ -432,6 +434,44 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         return containerMapper.getContainerNameByModelId(modelId);
     }
 
+    /**
+     * type=0: 删除任务（删 Pod 并删除用户文件）
+     * type=1: 重置（删 Pod，保留用户文件）
+     */
+    @Override
+    public void handleTaskByType(Long userId, Long modelId, String evaluationType, Integer type) {
+        if (userId == null || modelId == null ) {
+            log.warn("handleTaskByType 参数错误: userId={} modelId={} evaluationType={}", userId, modelId, evaluationType);
+            return;
+        }
+
+        // 新增：evaluationType 为空时，按 modelId 删除所有容器
+        if (evaluationType == null || evaluationType.isBlank()) {
+            log.info("handleTaskByType: evaluationType 为空，按 modelId={} 删除所有容器", modelId);
+            // 这里用你已有的查询方法
+            List<String> containerNames = containerMapper.getContainerNameByModelId(modelId);
+            if (containerNames != null) {
+                for (String name : containerNames) {
+                    deleteSingle(userId, name);
+                }
+            }
+        } else {
+            String containerName = userId + "-" + modelId + "-" + evaluationType.toLowerCase();
+            deleteSingle(userId, containerName);
+        }
+
+        if (type != null && type == 0) {
+            Path modelDataPath = Paths.get(rootPath, userData, String.valueOf(userId), String.valueOf(modelId), "modelData");
+            Path evaluationDataPath = Paths.get(rootPath, userData, String.valueOf(userId), String.valueOf(modelId), evaluationData);
+            deleteDirIfExists(modelDataPath);
+            deleteDirIfExists(evaluationDataPath);
+            log.info("handleTaskByType: 已删除 Pod 且清理用户文件 (type=0)");
+        } else {
+            log.info("handleTaskByType: 已删除 Pod，保留用户文件 (type=1 或空)");
+        }
+    }
+
+
     // ===================== 时间统计 =====================
 
     public void recordPodTime(String containerName, Map<String, Instant> statusTimestamps) throws JsonProcessingException {
@@ -675,6 +715,21 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     @Override
     public List<ByteArrayInputStream> init(Long userId, Map<String, String> imageUrl, Map<String, Map> imageParam) {
         return List.of();
+    }
+
+    private void deleteDirIfExists(Path path) {
+        try {
+            if (!Files.exists(path)) {
+                return;
+            }
+            Files.walk(path)
+                    .sorted(Comparator.reverseOrder())
+                    .map(Path::toFile)
+                    .forEach(File::delete);
+            log.info("已删除目录: {}", path);
+        } catch (IOException e) {
+            log.error("删除目录失败: {}", path, e);
+        }
     }
 
 }

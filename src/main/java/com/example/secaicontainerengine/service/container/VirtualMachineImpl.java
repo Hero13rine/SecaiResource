@@ -57,5 +57,10 @@ public class VirtualMachineImpl extends ServiceImpl<ContainerMapper, Container> 
     public ResourceConfig calculatePodResourceFromModel(ModelMessage modelMessage) {
         return null;
     }
+    @Override
+    public void handleTaskByType(Long userId, Long modelId, String evaluationType, Integer type) {
+
+    }
 
 }
+

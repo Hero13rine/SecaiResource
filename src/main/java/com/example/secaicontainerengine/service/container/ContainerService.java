@@ -47,4 +47,9 @@ public interface ContainerService extends IService<Container> {
 
     ResourceConfig calculatePodResourceFromModel(ModelMessage modelMessage);
 
+    /**
+     * 前端类型操作：type=0 重置(删 Pod 保留文件)，type=1 删除任务(删 Pod+文件)
+     */
+    void handleTaskByType(Long userId, Long modelId, String evaluationType, Integer type);
+
 }
