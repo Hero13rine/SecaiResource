@@ -51,7 +51,9 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ConcurrentHashMap;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
 import java.util.Enumeration;
 import javax.annotation.PostConstruct;
@@ -150,6 +152,11 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     }
 
     private String resolveLocalIp() {
+        InetAddress outboundIp = findOutboundInternetAddress();
+        if (outboundIp != null) {
+            return outboundIp.getHostAddress();
+        }
+
         try {
             Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
             while (interfaces.hasMoreElements()) {
@@ -160,17 +167,45 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                 Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
                 while (addresses.hasMoreElements()) {
                     InetAddress address = addresses.nextElement();
-                    if (address.isLoopbackAddress() || address.isLinkLocalAddress() || address.getHostAddress().contains(":")) {
-                        continue;
+                    if (isUsableAddress(address)) {
+                        return address.getHostAddress();
                     }
-                    return address.getHostAddress();
                 }
             }
-            return InetAddress.getLocalHost().getHostAddress();
+            InetAddress localHost = InetAddress.getLocalHost();
+            if (isUsableAddress(localHost)) {
+                return localHost.getHostAddress();
+            }
         } catch (Exception e) {
             log.warn("获取本机 IP 失败，使用 localhost 作为回退", e);
             return "localhost";
         }
+
+        log.warn("未找到可用的外网地址，使用 localhost 作为回退");
+        return "localhost";
+    }
+
+    private InetAddress findOutboundInternetAddress() {
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.connect(new InetSocketAddress("114.114.114.114", 80));
+            InetAddress address = socket.getLocalAddress();
+            if (isUsableAddress(address)) {
+                return address;
+            }
+        } catch (Exception e) {
+            log.info("通过外网连通性获取本机 IP 失败，将尝试枚举网卡", e);
+        }
+        return null;
+    }
+
+    private boolean isUsableAddress(InetAddress address) {
+        if (address == null) {
+            return false;
+        }
+        return !address.isAnyLocalAddress()
+                && !address.isLoopbackAddress()
+                && !address.isLinkLocalAddress()
+                && !address.getHostAddress().contains(":");
     }
 
     // ===================== 初始化接口 =====================
