@@ -51,7 +51,6 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 import static com.example.secaicontainerengine.util.YamlUtil.getName;
 import static com.example.secaicontainerengine.util.YamlUtil.renderTemplate;
@@ -79,7 +78,7 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     private String rootPath;
 
     /**
-     * NFS 服务器 IP，同时也是 SFTP host
+     * NFS 服务器 IP，同时也是 SFTP host（这里也用来做 SSH exec rm -rf）
      */
     @Value("${sftp.host}")
     private String nfsIp;
@@ -445,42 +444,140 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     }
 
     /**
-     * type=0: 删除任务（删 Pod 并删除用户文件）
+     * type=0: 删除任务（删 Pod 并删除用户文件：远程 rm -rf）
      * type=1: 重置（删 Pod，保留用户文件）
      */
     @Override
     public void handleTaskByType(Long userId, Long modelId, String evaluationType, Integer type) {
-        if (userId == null || modelId == null ) {
+        if (userId == null || modelId == null) {
             log.warn("handleTaskByType 参数错误: userId={} modelId={} evaluationType={}", userId, modelId, evaluationType);
             return;
         }
 
-        // 新增：evaluationType 为空时，按 modelId 删除所有容器
+        log.info("handleTaskByType START: userId={} modelId={} evaluationType={} type={}",
+                userId, modelId, evaluationType, type);
+
+        // 1) 先删 Pod
         if (evaluationType == null || evaluationType.isBlank()) {
-            log.info("handleTaskByType: evaluationType 为空，按 modelId={} 删除所有容器", modelId);
-            // 这里用你已有的查询方法
             List<String> containerNames = containerMapper.getContainerNameByModelId(modelId);
+            log.info("handleTaskByType: 查询到容器数量={} names={}",
+                    containerNames == null ? 0 : containerNames.size(), containerNames);
+
             if (containerNames != null) {
                 for (String name : containerNames) {
+                    log.info("handleTaskByType: 删除容器 userId={} containerName={}", userId, name);
                     deleteSingle(userId, name);
                 }
             }
         } else {
             String containerName = userId + "-" + modelId + "-" + evaluationType.toLowerCase();
+            log.info("handleTaskByType: 删除容器 userId={} containerName={}", userId, containerName);
             deleteSingle(userId, containerName);
         }
 
+        // 2) type=0：远程 rm -rf 清理文件
+        log.info("handleTaskByType: rootPath='{}', userData='{}', evaluationData='{}'", rootPath, userData, evaluationData);
+
         if (type != null && type == 0) {
-            Path modelDataPath = Paths.get(rootPath, userData, String.valueOf(userId), String.valueOf(modelId), "modelData");
-            Path evaluationDataPath = Paths.get(rootPath, userData, String.valueOf(userId), String.valueOf(modelId), evaluationData);
-            deleteDirIfExists(modelDataPath);
-            deleteDirIfExists(evaluationDataPath);
-            log.info("handleTaskByType: 已删除 Pod 且清理用户文件 (type=0)");
+            // 删到 modelId 这一层：/rootPath/userData/{userId}/{modelId}/
+            String remoteModelRootDir = String.format("%s/%s/%d/%d",
+                    rootPath, userData, userId, modelId);
+
+            log.info("handleTaskByType: type=0 -> 远程删除目录(到modelId层)开始");
+            log.info("handleTaskByType: remoteModelRootDir={}", remoteModelRootDir);
+
+            deleteRemoteDirBySsh(remoteModelRootDir);
+
+            log.info("handleTaskByType END: type=0 -> 远程删除目录(到modelId层)完成");
         } else {
-            log.info("handleTaskByType: 已删除 Pod，保留用户文件 (type=1 或空)");
+            log.info("handleTaskByType END: type!=0 -> 仅删除 Pod，保留用户文件");
+        }
+
+    }
+
+    // ===================== 远程删除：SSH 执行 rm -rf =====================
+
+    /**
+     * 通过 SSH 在远端执行 rm -rf 删除目录（只做远端删除，不走本地 Files.*）
+     * 依赖：该账号具备 SSH exec 权限（能执行 rm）
+     */
+    private void deleteRemoteDirBySsh(String remotePath) {
+        if (remotePath == null || remotePath.trim().isEmpty()) {
+            log.warn("deleteRemoteDirBySsh: remotePath is blank, skip");
+            return;
+        }
+
+        Session session = null;
+        ChannelExec channel = null;
+        InputStream stdout = null;
+        InputStream stderr = null;
+
+        try {
+            // 安全保护：避免误删根目录/太短的路径
+            String p = remotePath.trim();
+            if ("/".equals(p) || p.length() < 8) {
+                log.error("deleteRemoteDirBySsh: suspicious path={}, refuse to delete", p);
+                return;
+            }
+
+            // 单引号包裹，避免空格/特殊字符导致命令解析异常
+            String cmd = "rm -rf '" + p.replace("'", "'\"'\"'") + "'";
+
+            log.info("deleteRemoteDirBySsh: connect host={} port={} user={} cmd={}",
+                    nfsIp, sftpPort, sftpUsername, cmd);
+
+            JSch jsch = new JSch();
+            session = jsch.getSession(sftpUsername, nfsIp, sftpPort);
+            session.setPassword(sftpPassword);
+
+            Properties config = new Properties();
+            config.put("StrictHostKeyChecking", "no");
+            session.setConfig(config);
+            session.connect(10_000);
+
+            channel = (ChannelExec) session.openChannel("exec");
+            channel.setCommand(cmd);
+            channel.setInputStream(null);
+
+            stdout = channel.getInputStream();
+            stderr = channel.getErrStream();
+
+            channel.connect(10_000);
+
+            while (!channel.isClosed()) {
+                Thread.sleep(100);
+            }
+
+            int exitStatus = channel.getExitStatus();
+            String outStr = readAll(stdout);
+            String errStr = readAll(stderr);
+
+            log.info("deleteRemoteDirBySsh: done path={} exitStatus={} stdout={} stderr={}",
+                    p, exitStatus, trimForLog(outStr), trimForLog(errStr));
+
+            if (exitStatus != 0) {
+                log.warn("deleteRemoteDirBySsh: rm exitStatus != 0, path={}", p);
+            }
+        } catch (Exception e) {
+            log.error("deleteRemoteDirBySsh: failed, remotePath={}", remotePath, e);
+        } finally {
+            if (channel != null) channel.disconnect();
+            if (session != null) session.disconnect();
+            try { if (stdout != null) stdout.close(); } catch (Exception ignore) {}
+            try { if (stderr != null) stderr.close(); } catch (Exception ignore) {}
         }
     }
 
+    private String readAll(InputStream is) throws IOException {
+        if (is == null) return "";
+        return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+    }
+
+    private String trimForLog(String s) {
+        if (s == null) return "";
+        String t = s.trim();
+        return t.length() > 500 ? t.substring(0, 500) + "...(truncated)" : t;
+    }
 
     // ===================== 时间统计 =====================
 
@@ -568,10 +665,6 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
 
     // ===================== 日志保存：本地 + NFS (SFTP) =====================
 
-    /**
-     * 统一入口：同时尝试保存到本地和 NFS。
-     * 无论 Pod 成功/失败，都会调用。
-     */
     private void savePodLogs(Long userId, Long modelId, String evaluateMethod, String phase, String logs) {
         // 1. 本地一份
         try {
@@ -590,10 +683,6 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         }
     }
 
-    /**
-     * 本地保存 Pod 日志
-     * 路径形如：{secAI-container-engine 进程启动目录}/logs/{userId}/{modelId}/{evaluateMethod}/xxx.log
-     */
     private void savePodLogsLocal(Long userId, Long modelId, String evaluateMethod, String phase, String logs) throws IOException {
         String appRoot = System.getProperty("user.dir");
 
@@ -625,10 +714,6 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         log.info("本地 Pod 日志已保存: {}", logFile.toAbsolutePath());
     }
 
-    /**
-     * 通过 SFTP 把 Pod 日志保存到 NFS
-     * 路径：rootPath/userData/{userId}/{modelId}/{evaluationData}/{evaluateMethod}/logs/xxx.log
-     */
     private void savePodLogsToNfs(Long userId, Long modelId, String evaluateMethod, String phase, String logs) throws Exception {
         String remoteDir = String.format(
                 "%s/%s/%d/%d/%s/%s/logs",
@@ -650,9 +735,6 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         uploadTextBySftp(remoteDir, fileName, logs);
     }
 
-    /**
-     * 通用 SFTP 文本上传工具
-     */
     private void uploadTextBySftp(String remoteDir, String fileName, String content) throws JSchException, SftpException, IOException {
         Session session = null;
         Channel channel = null;
@@ -727,6 +809,7 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
         return List.of();
     }
 
+    // 这个本地删除方法你可以保留（不再被 handleTaskByType 调用），也可以删掉
     private void deleteDirIfExists(Path path) {
         try {
             if (!Files.exists(path)) {
@@ -741,5 +824,4 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
             log.error("删除目录失败: {}", path, e);
         }
     }
-
 }
