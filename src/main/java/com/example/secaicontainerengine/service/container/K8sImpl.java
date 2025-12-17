@@ -51,6 +51,12 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ConcurrentHashMap;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.util.Enumeration;
+import javax.annotation.PostConstruct;
 
 import static com.example.secaicontainerengine.util.YamlUtil.getName;
 import static com.example.secaicontainerengine.util.YamlUtil.renderTemplate;
@@ -129,11 +135,78 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     @Value("${k8s.evaluation-resources.limits.gpu-num}")
     private Integer evaluationGpuNum;
 
-    @Value("${localhost.logUrl}")
     private String logUrl;
 
-    @Value("${localhost.resultUrl}")
     private String resultUrl;
+
+    @Value("${server.port}")
+    private int serverPort;
+
+    @PostConstruct
+    public void initLocalUrls() {
+        String localIp = resolveLocalIp();
+        String baseUrl = "http://" + localIp + ":" + serverPort;
+        this.logUrl = baseUrl + "/log";
+        this.resultUrl = baseUrl + "/evaluate/result";
+        log.info("初始化本机回调地址 logUrl={}, resultUrl={}", logUrl, resultUrl);
+    }
+
+    private String resolveLocalIp() {
+        InetAddress outboundIp = findOutboundInternetAddress();
+        if (outboundIp != null) {
+            return outboundIp.getHostAddress();
+        }
+
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                if (!networkInterface.isUp() || networkInterface.isLoopback() || networkInterface.isVirtual()) {
+                    continue;
+                }
+                Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    if (isUsableAddress(address)) {
+                        return address.getHostAddress();
+                    }
+                }
+            }
+            InetAddress localHost = InetAddress.getLocalHost();
+            if (isUsableAddress(localHost)) {
+                return localHost.getHostAddress();
+            }
+        } catch (Exception e) {
+            log.warn("获取本机 IP 失败，使用 localhost 作为回退", e);
+            return "localhost";
+        }
+
+        log.warn("未找到可用的外网地址，使用 localhost 作为回退");
+        return "localhost";
+    }
+
+    private InetAddress findOutboundInternetAddress() {
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.connect(new InetSocketAddress("114.114.114.114", 80));
+            InetAddress address = socket.getLocalAddress();
+            if (isUsableAddress(address)) {
+                return address;
+            }
+        } catch (Exception e) {
+            log.info("通过外网连通性获取本机 IP 失败，将尝试枚举网卡", e);
+        }
+        return null;
+    }
+
+    private boolean isUsableAddress(InetAddress address) {
+        if (address == null) {
+            return false;
+        }
+        return !address.isAnyLocalAddress()
+                && !address.isLoopbackAddress()
+                && !address.isLinkLocalAddress()
+                && !address.getHostAddress().contains(":");
+    }
 
     // ===================== 初始化接口 =====================
 
