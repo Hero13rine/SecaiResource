@@ -76,7 +76,28 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
         boolean anyRunning = resultList.stream().anyMatch(r -> "评测中".equals(r.getStatus()));
         boolean anyFailed  = resultList.stream().anyMatch(r -> "失败".equals(r.getStatus()));
 
-        // 只要还有评测中，就不做最终结算
+        // === 0.1 失败优先：只要任一维度失败，立刻把总状态置为失败（避免前端一直“评测中”）===
+        ModelEvaluation modelEvaluation = modelEvaluationMapper.selectOne(
+                new QueryWrapper<ModelEvaluation>().eq("modelId", modelId)
+        );
+        ModelMessage modelMessage = modelMessageMapper.selectById(modelId);
+
+        if (anyFailed) {
+            if (modelEvaluation != null && !"失败".equals(modelEvaluation.getStatus())) {
+                modelEvaluation.setStatus("失败");
+                modelEvaluation.setUpdateTime(LocalDateTime.now());
+                modelEvaluationMapper.updateById(modelEvaluation);
+            }
+
+            if (modelMessage != null && (modelMessage.getStatus() == null || modelMessage.getStatus() != 5)) {
+                // 你系统里失败状态号如果不是 5，你按实际改
+                modelMessage.setStatus(5);
+                modelMessage.setUpdateTime(LocalDateTime.now());
+                modelMessageMapper.updateById(modelMessage);
+            }
+        }
+
+        // 只要还有评测中，就不做最终结算（但失败已提前同步）
         if (anyRunning) {
             log.info("模型 {} 仍有评测任务在运行中，暂不计算总分", modelId);
             return;
@@ -86,7 +107,6 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
         Map<String, String> resultMap = modelEvaluationMapper.selectResults(modelId);
 
         // === 1.1 获取任务类型 classification/detection ===
-        ModelMessage modelMessage = modelMessageMapper.selectById(modelId);
         String task = "classification";
         if (modelMessage != null && modelMessage.getModelConfig() != null) {
             try {
@@ -141,9 +161,6 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
                 .build();
 
         // === 4. 更新模型最终状态 ===
-        ModelEvaluation modelEvaluation = modelEvaluationMapper.selectOne(
-                new QueryWrapper<ModelEvaluation>().eq("modelId", modelId)
-        );
         if (modelEvaluation == null) {
             log.warn("模型 {} model_evaluation 不存在，跳过最终更新", modelId);
             return;
@@ -163,7 +180,6 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
         // model_message 状态：只有完全成功才置 4
         if (modelMessage != null) {
             if (anyFailed) {
-                // 你系统里失败状态号如果不是 5，你按实际改
                 modelMessage.setStatus(5);
             } else {
                 modelMessage.setStatus(4);
@@ -340,6 +356,13 @@ public class EvaluationResultServiceImpl extends ServiceImpl<EvaluationResultMap
     @Override
     public void updateStatus(EvaluationStatus evaluationStatus) {
         evaluationResultMapper.updateStatus(evaluationStatus);
+        // status 被写入后，尝试同步总状态（失败要尽快反映到 model_evaluation）
+        if (evaluationStatus != null
+                && evaluationStatus.getModelId() != null
+                && evaluationStatus.getStatus() != null
+                && !"评测中".equals(evaluationStatus.getStatus())) {
+            calculateAndUpdateScores(evaluationStatus.getModelId());
+        }
     }
 
     private boolean isNotEmptyJson(String json) {

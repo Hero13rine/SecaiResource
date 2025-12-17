@@ -237,6 +237,11 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
                     exist.setStatus("失败");
                     exist.setUpdateTime(LocalDateTime.now());
                     evaluationResultMapper.updateById(exist);
+                    try {
+                        evaluationResultService.calculateAndUpdateScores(modelId);
+                    } catch (Exception ex) {
+                        log.error("Pod {} 创建失败后同步总评测状态失败: modelId={}", containerName, modelId, ex);
+                    }
                     return;
                 }
 
@@ -412,6 +417,11 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
             er.setStatus("Succeeded".equals(phase) ? "成功" : "失败");
             er.setUpdateTime(LocalDateTime.now());
             evaluationResultMapper.updateById(er);
+            try {
+                evaluationResultService.calculateAndUpdateScores(modelId);
+            } catch (Exception ex) {
+                log.error("同步总评测状态失败: modelId={} podName={} phase={}", modelId, podName, phase, ex);
+            }
         }
     }
 
