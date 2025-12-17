@@ -78,11 +78,4 @@ docker:
   registryHost: 10.195.85.153:5000
 #  registryHost: 10.195.76.134:5000
 
-#localhost中的ip，需要修改为自己启动服务的ip
-localhost:
-  logUrl: http://10.196.81.41:8081/log
-  resultUrl: http://10.196.81.41:8081/evaluate/result
-#  logUrl: http://10.169.1.82:8081/log
-#  resultUrl: http://10.169.1.82:8081/evaluate/result
-#  logUrl: http://10.195.236.86:8081/log
-#  resultUrl: http://10.195.236.86:8081/evaluate/result
+# localhost 回调地址将由程序启动时自动构建

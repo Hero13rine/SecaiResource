@@ -51,6 +51,10 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ConcurrentHashMap;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.util.Enumeration;
+import javax.annotation.PostConstruct;
 
 import static com.example.secaicontainerengine.util.YamlUtil.getName;
 import static com.example.secaicontainerengine.util.YamlUtil.renderTemplate;
@@ -129,11 +133,45 @@ public class K8sImpl extends ServiceImpl<ContainerMapper, Container> implements 
     @Value("${k8s.evaluation-resources.limits.gpu-num}")
     private Integer evaluationGpuNum;
 
-    @Value("${localhost.logUrl}")
     private String logUrl;
 
-    @Value("${localhost.resultUrl}")
     private String resultUrl;
+
+    @Value("${server.port}")
+    private int serverPort;
+
+    @PostConstruct
+    public void initLocalUrls() {
+        String localIp = resolveLocalIp();
+        String baseUrl = "http://" + localIp + ":" + serverPort;
+        this.logUrl = baseUrl + "/log";
+        this.resultUrl = baseUrl + "/evaluate/result";
+        log.info("初始化本机回调地址 logUrl={}, resultUrl={}", logUrl, resultUrl);
+    }
+
+    private String resolveLocalIp() {
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                if (!networkInterface.isUp() || networkInterface.isLoopback() || networkInterface.isVirtual()) {
+                    continue;
+                }
+                Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    if (address.isLoopbackAddress() || address.isLinkLocalAddress() || address.getHostAddress().contains(":")) {
+                        continue;
+                    }
+                    return address.getHostAddress();
+                }
+            }
+            return InetAddress.getLocalHost().getHostAddress();
+        } catch (Exception e) {
+            log.warn("获取本机 IP 失败，使用 localhost 作为回退", e);
+            return "localhost";
+        }
+    }
 
     // ===================== 初始化接口 =====================
 
