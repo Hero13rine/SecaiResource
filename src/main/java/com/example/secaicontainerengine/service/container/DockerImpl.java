@@ -59,4 +59,10 @@ public class DockerImpl extends ServiceImpl<ContainerMapper, Container> implemen
         return null;
     }
 
+    @Override
+    public void handleTaskByType(Long userId, Long modelId, String evaluationType, Integer type) {
+
+    }
+
 }
+

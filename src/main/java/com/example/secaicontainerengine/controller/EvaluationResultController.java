@@ -44,13 +44,13 @@ public class EvaluationResultController {
 
     @PostMapping
     public void updateResult(@RequestBody EvaluationRequest request){
-        log.error("评测结果"+request);
+        log.info("评测结果"+request);
         evaluationResultService.updateResult(request.getModelId(), request.getResult(), request.getResultColumn());
     }
 
     @PostMapping("/status")
     public void updateStatus(@RequestBody EvaluationStatus evaluationStatus){
-        log.error("评测状态："+evaluationStatus);
+        log.info("评测状态："+evaluationStatus);
         evaluationResultService.updateStatus(evaluationStatus);
     }
 

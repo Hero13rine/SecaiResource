@@ -40,7 +40,7 @@ import java.util.concurrent.Future;
 
 import static com.example.secaicontainerengine.common.ErrorCode.SYSTEM_ERROR;
 import static com.example.secaicontainerengine.util.FileUtils.*;
-import static com.example.secaicontainerengine.util.FileUtils.generateEvaluationYamlConfigs;
+import static com.example.secaicontainerengine.util.FileUtils.generateDetectionEvaluationYaml;
 
 @RestController
 @RequestMapping("/file")
@@ -82,10 +82,23 @@ public class FileController {
      */
     @PostMapping("/upload/{userId}")
     public Map<String, Object> uploadFile(@RequestPart("file") MultipartFile multipartFile,
-                                          @RequestPart("data") UploadFileRequest uploadFileRequest,
+                                          @RequestPart("data") String rawJsonData,
                                           @PathVariable Long userId
 //                                          HttpServletRequest request
                                             ) {
+
+        log.info("========== 接收到的原始 JSON 字符串 ==========");
+        log.info(rawJsonData);
+        log.info("==========================================");
+
+        // 手动反序列化
+        UploadFileRequest uploadFileRequest;
+        try {
+            uploadFileRequest = JSONUtil.toBean(rawJsonData, UploadFileRequest.class);
+        } catch (Exception e) {
+            log.error("JSON 反序列化失败", e);
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "数据格式错误");
+        }
 
         //验证上传的文件是否满足要求
         String biz = uploadFileRequest.getBiz();
@@ -139,8 +152,36 @@ public class FileController {
             throw new BusinessException(SYSTEM_ERROR,"resourceConfig上传失败");
         }
         BusinessConfig businessConfig = uploadFileRequest.getBusinessConfig();
+        log.info("========== 后端接收到的数据 ==========");
+        log.info("businessConfig 是否为 null: {}", businessConfig == null);
         if(businessConfig != null) {
-            modelMessage.setBusinessConfig(JSONUtil.toJsonStr(businessConfig));
+            log.info("businessConfig.evaluateMethods 数量: {}",
+                businessConfig.getEvaluateMethods() != null ? businessConfig.getEvaluateMethods().size() : "null");
+
+            // 打印完整的 businessConfig JSON
+            String businessConfigJson = JSONUtil.toJsonStr(businessConfig);
+            log.info("完整的 businessConfig JSON:");
+            log.info(businessConfigJson);
+
+            // 如果有 evaluateMethods，详细打印每个维度的信息
+            if (businessConfig.getEvaluateMethods() != null) {
+                for (BusinessConfig.EvaluationDimensionConfig dimConfig : businessConfig.getEvaluateMethods()) {
+                    log.info("---------- 维度: {} ----------", dimConfig.getDimension());
+                    if (dimConfig.getMethodMetricMap() != null) {
+                        for (BusinessConfig.MethodMetricPair pair : dimConfig.getMethodMetricMap()) {
+                            log.info("  方法: {}", pair.getMethod());
+                            log.info("  metrics: {}", pair.getMetrics());
+                            log.info("  attacks: {}", pair.getAttacks());
+                            log.info("  fgsmEps: {}", pair.getFgsmEps());
+                            log.info("  pgdSteps: {}", pair.getPgdSteps());
+                            log.info("  corruptions: {}", pair.getCorruptions());
+                        }
+                    }
+                }
+            }
+            log.info("========================================");
+
+            modelMessage.setBusinessConfig(businessConfigJson);
         }else{
             throw new BusinessException(SYSTEM_ERROR,"businessConfig上传失败");
         }
@@ -206,11 +247,40 @@ public class FileController {
                 // 构建创建用户的评测配置文件的对象(userConfig)
                 EvaluationConfig evaluationConfig = new EvaluationConfig();
                 BeanUtils.copyProperties(modelConfig, evaluationConfig);
+
+                // 解析 inputShape 字符串（格式: "[3,32,32]"），拆分为 channels, height, width
+                if (modelConfig.getInputShape() != null && !modelConfig.getInputShape().trim().isEmpty()) {
+                    try {
+                        String cleanShape = modelConfig.getInputShape().replaceAll("[\\[\\]\\s]", "");
+                        String[] parts = cleanShape.split(",");
+                        if (parts.length == 3) {
+                            evaluationConfig.setInputChannels(Integer.parseInt(parts[0]));
+                            evaluationConfig.setInputHeight(Integer.parseInt(parts[1]));
+                            evaluationConfig.setInputWidth(Integer.parseInt(parts[2]));
+                        }
+                    } catch (Exception e) {
+                        log.warn("解析 inputShape 失败，使用默认值 [3,32,32]: " + modelConfig.getInputShape(), e);
+                        // 使用默认值
+                        evaluationConfig.setInputChannels(3);
+                        evaluationConfig.setInputHeight(32);
+                        evaluationConfig.setInputWidth(32);
+                    }
+                }
+
                 evaluationConfig.setEvaluateMethods(businessConfig.getEvaluateMethods());
                 String configsPath = modelSavePath + "/" + "evaluationConfigs";
-                generateEvaluationYamlConfigs(evaluationConfig, businessConfig,configsPath);
-
-
+                // 根据任务类型选择合适的配置生成方法
+                log.info("任务类型: {}", evaluationConfig.getTask());
+                if ("classification".equals(evaluationConfig.getTask())) {
+                    log.info("使用classification专用模板生成配置文件");
+                    FileUtils.generateClassificationEvaluationYaml(evaluationConfig, businessConfig, configsPath);
+                } else if ("detection".equals(evaluationConfig.getTask())) {
+                    log.info("使用detection专用模板生成配置文件");
+                    generateDetectionEvaluationYaml(evaluationConfig, businessConfig, configsPath);
+                } else {
+                    log.error("不支持的任务类型: {}", evaluationConfig.getTask());
+                    throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的任务类型: " + evaluationConfig.getTask());
+                }
                 log.info("文件处理完成");
 
             } catch (Exception e) {
@@ -227,9 +297,9 @@ public class FileController {
                 firstTaskFuture.get();  // 阻塞，直到第一个任务完成
                 log.info("开始上传文件到nfs服务器...");
                 // 这里好像有问题，sftp协议好像默认以/为分隔符，如果使用了File.separator在windows系统下则会变成\导致报错
-                String remoteDir = nfsPath + File.separator + userData +
-                        File.separator + loginUser.getId() +
-                        File.separator + modelId;
+                String remoteDir = nfsPath + "/" + userData + "/" + loginUser.getId() + "/" + modelId;
+                remoteDir = remoteDir.replaceAll("\\\\+", "/").replaceAll("/+", "/");
+                log.info("远程路径为"+ remoteDir);
                 sftpUploader.uploadDirectory(loginUser.getId(), FileConstant.FILE_BASE_PATH + File.separator + fileUploadBizEnum.getValue() + File.separator + loginUser.getId(),
                         remoteDir, modelId);
 

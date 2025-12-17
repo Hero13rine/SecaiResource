@@ -6,16 +6,17 @@ import com.example.secaicontainerengine.common.BaseResponse;
 import com.example.secaicontainerengine.common.ResultUtils;
 import com.example.secaicontainerengine.exception.BusinessException;
 import com.example.secaicontainerengine.pojo.dto.model.ModelEvaluationRequest;
+import com.example.secaicontainerengine.pojo.dto.model.TaskResetRequest;
 import com.example.secaicontainerengine.pojo.entity.ModelEvaluation;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.example.secaicontainerengine.pojo.vo.ModelEvaluation.GenerateReport;
+import com.example.secaicontainerengine.service.container.ContainerService;
 import com.example.secaicontainerengine.service.modelEvaluation.EvaluationResultService;
 import com.example.secaicontainerengine.service.modelEvaluation.ModelEvaluationService;
 import com.example.secaicontainerengine.service.modelEvaluation.ModelMessageService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -25,6 +26,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 
@@ -56,6 +58,9 @@ public class ModelEvaluationController {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private ContainerService containerService;
 
 
     @PostMapping("/start/{modelId}")
@@ -148,6 +153,15 @@ public class ModelEvaluationController {
                 return ResultUtils.error(4004, "该modelId已评测失败");
         }
         return ResultUtils.success("该modelId成功加入任务调度队列");
+    }
+
+    /**
+     * type=0: 重置（删 Pod，保留用户文件）；type=1: 删除任务（删 Pod+文件）
+     */
+    @PostMapping("/task/reset")
+    public BaseResponse<?> resetOrDeleteTask(@RequestBody TaskResetRequest request) {
+        containerService.handleTaskByType(request.getUserId(), request.getModelId(), request.getEvaluationType(), request.getType());
+        return ResultUtils.success("操作成功");
     }
 
 

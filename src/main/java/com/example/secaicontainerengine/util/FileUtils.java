@@ -3,15 +3,16 @@ package com.example.secaicontainerengine.util;
 import com.example.secaicontainerengine.common.ErrorCode;
 import com.example.secaicontainerengine.exception.BusinessException;
 import com.example.secaicontainerengine.pojo.dto.model.BusinessConfig;
-import com.example.secaicontainerengine.pojo.dto.model.Evaluation;
 import com.example.secaicontainerengine.pojo.dto.model.EvaluationConfig;
-import com.example.secaicontainerengine.pojo.dto.model.ShowBusinessConfig;
 import com.example.secaicontainerengine.pojo.entity.ModelMessage;
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.SftpException;
 import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.nodes.Node;
+import org.yaml.snakeyaml.nodes.Tag;
+import org.yaml.snakeyaml.representer.Representer;
 
 import java.io.*;
 import java.nio.file.DirectoryStream;
@@ -51,15 +52,19 @@ public class FileUtils {
                 }
 
                 if (zipEntry.isDirectory()) {
-                    // 创建目录
-                    if (!newFile.mkdirs()) {
-                        throw new BusinessException(ErrorCode.SYSTEM_ERROR, "无法创建目录: " + newFile.getPath());
+                    // 目录存在就不要再创建
+                    if (!newFile.exists()) {
+                        if (!newFile.mkdirs()) {
+                            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "无法创建目录: " + newFile.getPath());
+                        }
                     }
                 } else {
-                    // 确保父目录存在
+                    // 文件情况：先确保父目录存在
                     File parentDir = newFile.getParentFile();
-                    if (!parentDir.exists() && !parentDir.mkdirs()) {
-                        throw new BusinessException(ErrorCode.SYSTEM_ERROR, "无法创建父目录: " + parentDir.getPath());
+                    if (!parentDir.exists()) {
+                        if (!parentDir.mkdirs()) {
+                            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "无法创建父目录: " + parentDir.getPath());
+                        }
                     }
 
                     // 写入文件
@@ -159,7 +164,7 @@ public class FileUtils {
 
     public static ModelMessage processFilesInRemoteDirectory(ChannelSftp sftpChannel, ModelMessage modelMessage, String remotePath) throws SftpException {
         Vector<ChannelSftp.LsEntry> entries = sftpChannel.ls(remotePath);
-
+        log.info("开始处理远程路径: {}", remotePath);
         for (ChannelSftp.LsEntry entry : entries) {
             String fileName = entry.getFilename().toLowerCase();
             String absolutePath = remotePath + "/" + entry.getFilename();
@@ -338,14 +343,24 @@ public class FileUtils {
 
         Long userId = modelMessage.getUserId();
         Long modelId = modelMessage.getId();
+        // 修复镜像标签不一致问题：显式指定 :latest 标签，确保推送和拉取的镜像名称完全匹配
+        // 原代码（已注释）：
+        // String buildAndPushScript = "#!/bin/bash\n" +
+        //         "cd /home/xd-1/k8s/userData/" + userId + "/" + modelId + "/modelData\n" +
+        //         "echo \"正在制作镜像...\"\n" +
+        //         "sudo docker build --build-arg condaEnv=" + condaEnv + " -t " + modelId + ":latest .\n" +
+        //         "echo \"正在给镜像打标签...\"\n" +
+        //         "sudo docker tag " + modelId + ":latest " + registryHost + "/" + modelId + "\n" +
+        //         "echo \"正在推送镜像到仓库...\"\n" +
+        //         "sudo docker push " + registryHost + "/" + modelId + "\n";
         String buildAndPushScript = "#!/bin/bash\n" +
                 "cd /home/xd-1/k8s/userData/" + userId + "/" + modelId + "/modelData\n" +
                 "echo \"正在制作镜像...\"\n" +
                 "sudo docker build --build-arg condaEnv=" + condaEnv + " -t " + modelId + ":latest .\n" +
                 "echo \"正在给镜像打标签...\"\n" +
-                "sudo docker tag " + modelId + ":latest " + registryHost + "/" + modelId + "\n" +
+                "sudo docker tag " + modelId + ":latest " + registryHost + "/" + modelId + ":latest\n" +
                 "echo \"正在推送镜像到仓库...\"\n" +
-                "sudo docker push " + registryHost + "/" + modelId + "\n";
+                "sudo docker push " + registryHost + "/" + modelId + ":latest\n";
         try {
             Files.write(shDestinationPath, buildAndPushScript.getBytes());
             log.info("镜像相关脚本生成成功！！");
@@ -459,7 +474,46 @@ public class FileUtils {
 //        }
 //    }
 
-    public static void generateEvaluationYamlConfigs(EvaluationConfig evaluationConfig, BusinessConfig businessConfig, String outputPath) throws IOException {
+    /**
+     * 为检测任务生成评估YAML配置
+     */
+    public static void generateDetectionEvaluationYaml(EvaluationConfig evaluationConfig, BusinessConfig businessConfig, String outputPath) throws IOException {
+
+
+        log.info("使用检测任务模板生成配置文件");
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("model", buildModelSection(evaluationConfig));
+        // 传递 task 类型给 buildEvaluationSection
+        root.put("evaluation", buildEvaluationSection(businessConfig, evaluationConfig.getTask()));
+
+        File outputFile = new File(outputPath, "evaluationConfig.yaml");
+        if (!outputFile.getParentFile().exists() && !outputFile.getParentFile().mkdirs()) {
+            throw new IOException("无法创建输出目录：" + outputPath);
+        }
+
+        try (FileWriter writer = new FileWriter(outputFile)) {
+            DumperOptions dumperOptions = new DumperOptions();
+            dumperOptions.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+            dumperOptions.setPrettyFlow(false);
+            dumperOptions.setIndent(2);
+            Representer representer = new Representer(dumperOptions) {
+                @Override
+                protected Node representSequence(Tag tag, Iterable<?> sequence, DumperOptions.FlowStyle flowStyle) {
+                    if (sequence instanceof FlowSequence) {
+                        flowStyle = DumperOptions.FlowStyle.FLOW;
+                    }
+                    return super.representSequence(tag, sequence, flowStyle);
+                }
+            };
+            Yaml yaml = new Yaml(representer, dumperOptions);
+            yaml.dump(root, writer);
+        }
+    }
+    /**
+     * 为classification任务生成简化的评估YAML配置
+     */
+    public static void generateClassificationEvaluationYaml(EvaluationConfig evaluationConfig, BusinessConfig businessConfig, String outputPath) throws IOException {
+        log.info("开始使用classification专用模板生成配置文件");
         // 构造 model 节点
         Map<String, Object> modelInstantiation = new HashMap<>();
         modelInstantiation.put("model_path", "/app/userData/modelData/model/" + evaluationConfig.getModelNetFileName());
@@ -472,11 +526,31 @@ public class FileUtils {
         modelEstimator.put("task", evaluationConfig.getTask());
 
         Map<String, Object> estimatorParams = new HashMap<>();
-        estimatorParams.put("input_shape", Arrays.asList(3, 32, 32));
-        estimatorParams.put("nb_classes", 10);
+        // 输入数据形状：优先使用传入的参数，如果为空则使用默认值 [3, 32, 32]
+        List<Integer> inputShape;
+        if (evaluationConfig.getInputChannels() != null
+                && evaluationConfig.getInputHeight() != null
+                && evaluationConfig.getInputWidth() != null) {
+            inputShape = Arrays.asList(
+                    evaluationConfig.getInputChannels(),
+                    evaluationConfig.getInputHeight(),
+                    evaluationConfig.getInputWidth()
+            );
+        } else {
+            // 向后兼容：如果参数为空，使用默认值
+            inputShape = Arrays.asList(3, 32, 32);
+        }
+        estimatorParams.put("input_shape", inputShape);
+
+        // 类别数目：优先使用传入的参数，如果为空则使用默认值 10
+        Integer nbClasses = evaluationConfig.getNbClasses() != null
+                ? evaluationConfig.getNbClasses()
+                : 10; // 向后兼容：默认值
+        estimatorParams.put("nb_classes", nbClasses);
         estimatorParams.put("clip_values", Arrays.asList(0, 1));
         estimatorParams.put("device", "cuda");
         estimatorParams.put("device_type", "gpu");
+        estimatorParams.put("channels_first", true);
         modelEstimator.put("parameters", estimatorParams);
 
         Map<String, Object> modelConfig = new HashMap<>();
@@ -492,17 +566,23 @@ public class FileUtils {
             evaluation.put(dim, new LinkedHashMap<>());
         }
 
-        for (BusinessConfig.EvaluationDimensionConfig dimensionConfig : businessConfig.getEvaluateMethods()) {
-            String dimension = dimensionConfig.getDimension();
-            List<BusinessConfig.MethodMetricPair> methodMetricPairs = dimensionConfig.getMethodMetricMap();
-            if (!dimensions.contains(dimension)) {
-                continue; // 忽略未定义的维度
-            }
-            Map<String, List<String>> methodMap = (Map<String, List<String>>) evaluation.get(dimension);
-            for (BusinessConfig.MethodMetricPair pair : methodMetricPairs) {
-                String method = pair.getMethod();
-                List<String> metrics = pair.getMetrics() != null ? pair.getMetrics() : new ArrayList<>();
-                methodMap.put(method, metrics);
+        if (businessConfig.getEvaluateMethods() != null) {
+            for (BusinessConfig.EvaluationDimensionConfig dimensionConfig : businessConfig.getEvaluateMethods()) {
+                String dimension = dimensionConfig.getDimension();
+                List<BusinessConfig.MethodMetricPair> methodMetricPairs = dimensionConfig.getMethodMetricMap();
+                if (!dimensions.contains(dimension)) {
+                    continue; // 忽略未定义的维度
+                }
+                Map<String, List<String>> methodMap = (Map<String, List<String>>) evaluation.get(dimension);
+                if (methodMetricPairs != null) {
+                    for (BusinessConfig.MethodMetricPair pair : methodMetricPairs) {
+                        if (pair != null && pair.getMethod() != null) {
+                            String method = pair.getMethod();
+                            List<String> metrics = pair.getMetrics() != null ? pair.getMetrics() : new ArrayList<>();
+                            methodMap.put(method, metrics);
+                        }
+                    }
+                }
             }
         }
 
@@ -523,6 +603,364 @@ public class FileUtils {
             Yaml yaml = new Yaml(dumperOptions);
             yaml.dump(root, writer);
         }
+    }
+
+
+    private static Map<String, Object> buildModelSection(EvaluationConfig evaluationConfig) {
+        Map<String, Object> instantiation = new LinkedHashMap<>();
+        instantiation.put("model_path", "/app/userData/modelData/model/" + defaultString(evaluationConfig.getModelNetFileName()));
+        instantiation.put("weight_path", "/app/userData/modelData/" + defaultString(evaluationConfig.getWeightFileName()));
+        instantiation.put("model_name", defaultString(evaluationConfig.getModelNetName()));
+
+        // 当 task 是 detection 时，添加特定的 parameters
+        Map<String, Object> modelParameters = new LinkedHashMap<>();
+        if ("detection".equalsIgnoreCase(evaluationConfig.getTask())) {
+            modelParameters.put("num_classes", 20);
+            modelParameters.put("network", "fasterrcnn");
+            modelParameters.put("pretrained", false);
+            modelParameters.put("trainable_backbone_layers", 3);
+        }
+        instantiation.put("parameters", modelParameters);
+
+        Map<String, Object> estimatorParams = new LinkedHashMap<>();
+        estimatorParams.put("input_shape", buildInputShape(evaluationConfig));
+        // nb_classes 对所有任务都适用（分类和检测都需要知道类别数）
+        estimatorParams.put("nb_classes",
+                evaluationConfig.getNbClasses() != null ? evaluationConfig.getNbClasses() : 10);
+        estimatorParams.put("clip_values", flowSequence(Arrays.asList(0, 1)));
+        estimatorParams.put("device", "cuda");
+        estimatorParams.put("device_type", "gpu");
+        estimatorParams.put("channels_first", true);
+
+        Map<String, Object> estimator = new LinkedHashMap<>();
+        estimator.put("framework", defaultString(evaluationConfig.getFramework()));
+        estimator.put("task", mapTask(evaluationConfig.getTask()));
+        estimator.put("parameters", estimatorParams);
+
+        Map<String, Object> model = new LinkedHashMap<>();
+        model.put("instantiation", instantiation);
+        model.put("estimator", estimator);
+        return model;
+    }
+
+    private static FlowSequence<Integer> buildInputShape(EvaluationConfig evaluationConfig) {
+        Integer channels = evaluationConfig.getInputChannels();
+        Integer height = evaluationConfig.getInputHeight();
+        Integer width = evaluationConfig.getInputWidth();
+        if (channels != null && height != null && width != null) {
+            return flowSequence(Arrays.asList(channels, height, width));
+        }
+        return flowSequence(Arrays.asList(3, 32, 32));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> buildEvaluationSection(BusinessConfig businessConfig, String task) {
+        Map<String, Object> evaluation = createBaseEvaluationStructure();
+
+        log.info("========================================");
+        log.info("开始构建 evaluation section");
+        log.info("task 类型: {}", task);
+        log.info("businessConfig 是否为空: {}", businessConfig == null);
+
+        if (businessConfig == null || businessConfig.getEvaluateMethods() == null) {
+            log.warn("businessConfig 或 evaluateMethods 为空，返回基础结构");
+            return evaluation;
+        }
+
+        log.info("evaluateMethods 数量: {}", businessConfig.getEvaluateMethods().size());
+
+        for (BusinessConfig.EvaluationDimensionConfig dimensionConfig : businessConfig.getEvaluateMethods()) {
+            if (dimensionConfig == null) {
+                continue;
+            }
+            String dimension = dimensionConfig.getDimension();
+            log.info("---------- 处理维度: {} ----------", dimension);
+
+            if (!evaluation.containsKey(dimension)) {
+                log.warn("evaluation 中不包含维度: {}", dimension);
+                continue;
+            }
+            Map<String, Object> methodContainer = castToMap(evaluation.get(dimension));
+            List<BusinessConfig.MethodMetricPair> methodMetricPairs = dimensionConfig.getMethodMetricMap();
+            if (methodMetricPairs == null) {
+                log.warn("维度 {} 的 methodMetricPairs 为空", dimension);
+                continue;
+            }
+
+            log.info("维度 {} 下有 {} 个方法", dimension, methodMetricPairs.size());
+
+            for (BusinessConfig.MethodMetricPair pair : methodMetricPairs) {
+                if (pair == null || pair.getMethod() == null || pair.getMethod().trim().isEmpty()) {
+                    log.warn("pair 或 method 为空，跳过");
+                    continue;
+                }
+
+                String method = pair.getMethod();
+                log.info(">>> 处理方法: {}", method);
+                log.info("    - metrics: {}", pair.getMetrics());
+                log.info("    - attacks: {}", pair.getAttacks());
+                log.info("    - fgsmEps: {}", pair.getFgsmEps());
+                log.info("    - pgdSteps: {}", pair.getPgdSteps());
+                log.info("    - corruptions: {}", pair.getCorruptions());
+                Map<String, Object> methodNode = castToMap(
+                        methodContainer.computeIfAbsent(pair.getMethod(), FileUtils::createDefaultMethodNode));
+
+                // 设置 metrics：如果前端传了就用前端的，否则根据 task 类型设置默认值
+                List<String> metrics;
+                if (pair.getMetrics() != null && !pair.getMetrics().isEmpty()) {
+                    // 前端传了 metrics，直接使用（原样接收，支持任意写法）
+                    metrics = new ArrayList<>(pair.getMetrics());
+                } else if ("basic".equals(dimension) && "performance_testing".equals(pair.getMethod())) {
+                    // 前端没传 metrics，根据 task 类型设置默认值
+                    if ("detection".equalsIgnoreCase(task)) {
+                        // detection 任务的默认指标（根据图片中的配置）
+                        metrics = new ArrayList<>();
+                        metrics.add("map");  // 默认使用 map，前端可以传 map/map_50/accuracy/map50/map@50 任意一个
+                        metrics.add("per_class_ap");
+                        metrics.add("precision");
+                        metrics.add("recall");
+                    } else {
+                        // 分类任务的默认指标
+                        metrics = Arrays.asList("accuracy", "precision", "recall", "f1score");
+                    }
+                } else {
+                    metrics = new ArrayList<>();
+                }
+                methodNode.put("metrics", metrics);
+
+                // 处理对抗攻击参数（adversarial 方法）
+                if ("adversarial".equals(pair.getMethod()) && pair.getAttacks() != null && !pair.getAttacks().isEmpty()) {
+                    Map<String, Object> attacks = new LinkedHashMap<>();
+
+                    log.info("========== 开始处理对抗攻击参数 ==========");
+                    log.info("前端传来的攻击方法列表: {}", pair.getAttacks());
+                    log.info("前端传来的 fgsmEps 参数: {}", pair.getFgsmEps());
+                    log.info("前端传来的 pgdSteps 参数: {}", pair.getPgdSteps());
+
+                    for (String attackName : pair.getAttacks()) {
+                        Map<String, Object> attackConfig = new LinkedHashMap<>();
+                        Map<String, Object> attackParams = new LinkedHashMap<>();
+
+                        if ("fgsm".equals(attackName)) {
+                            // FGSM 攻击：解析 fgsmEps 参数范围 "[start,end,step]"
+                            String fgsmEpsStr = pair.getFgsmEps();
+                            log.info("FGSM - 原始字符串: {}", fgsmEpsStr);
+                            Map<String, Object> epsRange = parseRangeParameterToMap(fgsmEpsStr);
+                            log.info("FGSM - 解析后的 epsRange: {}", epsRange);
+                            // 如果前端没有传参数或参数为空，跳过该攻击方法
+                            if (epsRange.isEmpty()) {
+                                log.warn("FGSM eps 参数为空，跳过该攻击方法");
+                                continue;
+                            }
+                            attackParams.put("eps", epsRange);
+                        } else if ("pgd".equals(attackName)) {
+                            // PGD 攻击：解析 pgdSteps 参数范围 "[start,end,step]"
+                            String pgdStepsStr = pair.getPgdSteps();
+                            log.info("PGD - 原始字符串: {}", pgdStepsStr);
+                            Map<String, Object> stepsRange = parseRangeParameterToMap(pgdStepsStr);
+                            log.info("PGD - 解析后的 stepsRange: {}", stepsRange);
+                            // 如果前端没有传参数或参数为空，跳过该攻击方法
+                            if (stepsRange.isEmpty()) {
+                                log.warn("PGD steps 参数为空，跳过该攻击方法");
+                                continue;
+                            }
+                            attackParams.put("steps", stepsRange);
+                        }
+
+                        attackConfig.put("parameters", attackParams);
+                        attacks.put(attackName, attackConfig);
+                    }
+
+                    methodNode.put("attacks", attacks);
+                    log.info("========== 对抗攻击参数处理完成 ==========");
+                }
+
+                // 处理扰动攻击参数（corruption 方法）
+                if ("corruption".equals(pair.getMethod()) && pair.getCorruptions() != null && !pair.getCorruptions().isEmpty()) {
+                    // corruptions 是扰动方法列表
+                    methodNode.put("corruptions", new ArrayList<>(pair.getCorruptions()));
+                }
+            }
+        }
+        return evaluation;
+    }
+
+    private static Map<String, Object> createBaseEvaluationStructure() {
+        Map<String, Object> evaluation = new LinkedHashMap<>();
+        evaluation.put("basic", createBasicSection());
+        evaluation.put("robustness", createRobustnessSection());
+        evaluation.put("interpretability", createSingleMethodSection("interpretability_testing"));
+        evaluation.put("safety", createSingleMethodSection("membership_inference_detection"));
+        evaluation.put("generalization", createSingleMethodSection("generalization_testing"));
+        evaluation.put("fairness", createFairnessSection());
+        return evaluation;
+    }
+
+    private static Map<String, Object> createBasicSection() {
+        Map<String, Object> basic = new LinkedHashMap<>();
+        Map<String, Object> performanceTesting = createDefaultMethodNode("performance_testing");
+        basic.put("performance_testing", performanceTesting);
+        return basic;
+    }
+
+    private static Map<String, Object> createRobustnessSection() {
+        Map<String, Object> robustness = new LinkedHashMap<>();
+        robustness.put("adversarial", createDefaultMethodNode("adversarial"));
+        robustness.put("corruption", createDefaultMethodNode("corruption"));
+        return robustness;
+    }
+
+    private static Map<String, Object> createSingleMethodSection(String method) {
+        Map<String, Object> section = new LinkedHashMap<>();
+        section.put(method, createDefaultMethodNode(method));
+        return section;
+    }
+
+    private static Map<String, Object> createFairnessSection() {
+        Map<String, Object> fairness = new LinkedHashMap<>();
+        fairness.put("individual_group_fairness", createDefaultMethodNode("individual_group_fairness"));
+        return fairness;
+    }
+
+    private static Map<String, Object> createDefaultMethodNode(String method) {
+        Map<String, Object> methodNode = new LinkedHashMap<>();
+        methodNode.put("metrics", new ArrayList<>());
+        switch (method) {
+            case "performance_testing":
+                methodNode.put("performance_testing_config", new ArrayList<>());
+                break;
+            case "corruption":
+                methodNode.put("corruptions", new ArrayList<>());
+                break;
+            default:
+                // adversarial方法不添加默认attacks，只有用户传了才添加
+                break;
+        }
+        return methodNode;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castToMap(Object value) {
+        return (Map<String, Object>) value;
+    }
+
+    private static <T> FlowSequence<T> flowSequence(Collection<? extends T> source) {
+        return new FlowSequence<>(source);
+    }
+
+    private static final class FlowSequence<T> extends ArrayList<T> {
+        FlowSequence(Collection<? extends T> source) {
+            super(source);
+        }
+    }
+
+    private static String defaultString(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static String mapTask(String task) {
+        if (task == null) {
+            return "";
+        }
+        return task;
+    }
+
+    /**
+     * 解析前端传来的范围参数（浮点数版本），格式: [start,end,step]
+     * 目前取 start 值作为默认值，后续可以改为生成多个配置
+     * @param rangeStr 范围字符串，如 "[0.001,0.01,0.001]"
+     * @param defaultValue 解析失败时的默认值
+     * @return 解析出的起始值
+     */
+    private static Double parseRangeParameterDouble(String rangeStr, Double defaultValue) {
+        if (rangeStr == null || rangeStr.trim().isEmpty()) {
+            return defaultValue;
+        }
+
+        try {
+            // 去掉方括号和空格
+            String clean = rangeStr.replaceAll("[\\[\\]\\s]", "");
+            String[] parts = clean.split(",");
+            if (parts.length >= 1) {
+                return Double.parseDouble(parts[0]); // 取起始值
+            }
+        } catch (Exception e) {
+            // 解析失败，返回默认值
+        }
+
+        return defaultValue;
+    }
+
+    /**
+     * 解析前端传来的范围参数（整数版本），格式: [start,end,step]
+     * 目前取 start 值作为默认值，后续可以改为生成多个配置
+     * @param rangeStr 范围字符串，如 "[5,20,5]"
+     * @param defaultValue 解析失败时的默认值
+     * @return 解析出的起始值
+     */
+    private static Integer parseRangeParameterInt(String rangeStr, Integer defaultValue) {
+        if (rangeStr == null || rangeStr.trim().isEmpty()) {
+            return defaultValue;
+        }
+
+        try {
+            // 去掉方括号和空格
+            String clean = rangeStr.replaceAll("[\\[\\]\\s]", "");
+            String[] parts = clean.split(",");
+
+            if (parts.length >= 1) {
+                return Integer.parseInt(parts[0]); // 取起始值
+            }
+        } catch (Exception e) {
+            // 解析失败，返回默认值
+        }
+
+        return defaultValue;
+    }
+
+    /**
+     * 解析前端传来的范围参数为 Map 对象，格式: [start,end,step]
+     * 生成 YAML 格式: {start: value1, end: value2, step: value3}
+     *
+     * @param rangeStr 范围字符串，如 "[0.001,0.01,0.002]" 或 "[10,100,10]"
+     * @return Map 对象包含 start, end, step 三个键
+     */
+    private static Map<String, Object> parseRangeParameterToMap(String rangeStr) {
+        Map<String, Object> rangeMap = new LinkedHashMap<>();
+
+        if (rangeStr == null || rangeStr.trim().isEmpty()) {
+            // 返回空 Map
+            return rangeMap;
+        }
+
+        try {
+            // 去掉方括号和空格
+            String clean = rangeStr.replaceAll("[\\[\\]\\s]", "");
+            String[] parts = clean.split(",");
+
+            if (parts.length >= 3) {
+                // 尝试解析为浮点数（兼容整数和小数）
+                double start = Double.parseDouble(parts[0]);
+                double end = Double.parseDouble(parts[1]);
+                double step = Double.parseDouble(parts[2]);
+
+                // 判断是否为整数（避免 10.0 这种格式）
+                if (start == (int)start && end == (int)end && step == (int)step) {
+                    rangeMap.put("start", (int)start);
+                    rangeMap.put("end", (int)end);
+                    rangeMap.put("step", (int)step);
+                } else {
+                    rangeMap.put("start", start);
+                    rangeMap.put("end", end);
+                    rangeMap.put("step", step);
+                }
+            }
+        } catch (Exception e) {
+            // 解析失败，返回空 Map
+            log.warn("解析范围参数失败: {}", rangeStr, e);
+        }
+
+        return rangeMap;
     }
 }
 

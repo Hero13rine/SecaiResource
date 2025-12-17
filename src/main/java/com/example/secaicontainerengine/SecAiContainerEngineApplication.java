@@ -12,6 +12,6 @@ public class SecAiContainerEngineApplication {
 
 	public static void main(String[] args) {
 		SpringApplication.run(SecAiContainerEngineApplication.class, args);
-	}
 
+	}
 }
